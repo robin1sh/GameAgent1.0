@@ -1,0 +1,8 @@
+# 实验 B1：交替训练
+exp_id: b1_alternating
+mode: alternating
+total_timesteps: 10000000
+n_envs: 10
+alternate_rounds: 1
+save_path: ./best_model/
+log_path: ./logs/

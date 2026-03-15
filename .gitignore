@@ -1,0 +1,28 @@
+ppo_mario.zip
+
+# OS
+.DS_Store
+
+# Local workspace and editor state
+*.code-workspace
+.cursorrules/
+.cursor/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Training artifacts and large binaries
+*.pt
+*.pth
+*.zip
+*.tgz
+best_model/
+callback_logs/
+data_imitation/
+data_imitation_unified/
+logs/
+
+# Local upload/runtime state
+.last_upload_timestamp
+.upload_state

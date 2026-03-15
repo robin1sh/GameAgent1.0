@@ -1,0 +1,7 @@
+# 实验 A2：只在 jumper 上训练，测试 mario（零样本）
+exp_id: a2_jumper_only
+env: jumper
+total_timesteps: 10000000
+n_envs: 10
+save_path: ./best_model/
+log_path: ./logs/

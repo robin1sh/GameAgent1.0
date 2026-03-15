@@ -1,0 +1,48 @@
+SubwayAI CNN 结构整理（来自 /Users/robin1sh/Desktop/subwAI-master/ai.py）
+
+1) 适用背景
+该网络来自 SubwayAI 的监督学习分类模型，用于把图像分类成 5 类动作。
+它不是 PPO 的策略网络，但卷积主干的设计思路可以借鉴到 PPO 的特征提取器中。
+
+2) 输入与输出
+- 输入: (IMG_HEIGHT, IMG_WIDTH, 3)，默认 96x96x3 彩色图像
+- 输出: Dense(NUM_CATEGORIES=5) + softmax
+
+3) CNN 主干结构（按顺序）
+- Conv(64, 3x3, same) + BN
+- Conv(64, 3x3, same) + BN
+- MaxPool(2x2)
+
+- Conv(128, 3x3, same) + BN
+- MaxPool(2x2) + Dropout(0.25)
+- Conv(128, 3x3, same) + BN
+- MaxPool(2x2) + Dropout(0.25)
+
+- Conv(256, 3x3, same) + BN
+- MaxPool(2x2) + Dropout(0.5)
+- Conv(256, 3x3, same) + BN
+- MaxPool(2x2) + Dropout(0.5)
+
+- Conv(512, 3x3, same) + BN + MaxPool(2x2)
+
+4) 全连接头（分类头）
+- Flatten
+- Dense(512, relu) + BN + Dropout(0.65)
+- Dense(256, relu) + BN + Dropout(0.65)
+- Dense(128, relu) + BN + Dropout(0.65)
+- Dense(64, relu) + BN + Dropout(0.3)
+- Dense(5, softmax)
+
+5) 关键特点
+- 卷积层较深，通道数逐步增大（64 -> 128 -> 256 -> 512）
+- 正则化很强（大量 Dropout + L2 正则）
+- 面向监督分类任务，不是 RL 训练目标
+
+6) 迁移到 PPO 的可行借鉴
+- 可借用卷积堆叠与通道设置思路，作为特征提取器
+- 建议简化全连接头，避免过深导致 RL 训练过慢
+- RL 中一般不使用 softmax 分类头，而是由策略网络输出动作分布
+
+7) 给 Mario -> Sonic 泛化的建议
+- 模型结构无需强改，但建议先在马里奥训练，再在索尼克环境继续训练
+- 统一预处理（灰度/缩放/帧堆叠）与动作空间映射

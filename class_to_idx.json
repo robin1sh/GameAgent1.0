@@ -1,0 +1,6 @@
+{
+  "jump": 0,
+  "noop": 1,
+  "right": 2,
+  "right_jump": 3
+}
