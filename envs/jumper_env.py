@@ -55,12 +55,50 @@ class ProcgenObsWrapper:
         self.venv = venv
         self.obs_size = obs_size
         self.num_envs = venv.num_envs
+        # 奖励塑形参数（简单版）：鼓励跳跃避险，轻微惩罚终止
+        self._jump_actions = {2, 8, 10}  # 左跳、右跳、原地跳（统一动作空间）
+        self._jump_bonus = 0.01
+        self._death_penalty = 0.05
+        self._last_actions = None
         self.observation_space = spaces.Box(
             low=0, high=255,
             shape=(obs_size[0], obs_size[1], 1),
             dtype=np.uint8
         )
         self.action_space = venv.action_space
+
+    def _shape_rewards(self, rewards, dones, infos, actions):
+        """
+        轻量奖励塑形：
+        - 跳跃且未终止：+jump_bonus
+        - 终止（通常表示失败）：-death_penalty
+        """
+        raw_rewards = np.asarray(rewards, dtype=np.float32)
+        shaped_rewards = raw_rewards.copy()
+        if actions is None:
+            action_array = np.full(len(shaped_rewards), 4, dtype=np.int32)  # 默认 idle
+        else:
+            action_array = np.asarray(actions).reshape(-1)
+
+        for i in range(len(shaped_rewards)):
+            bonus = 0.0
+            action_i = int(action_array[i]) if i < len(action_array) else 4
+            done_i = bool(dones[i])
+
+            if (action_i in self._jump_actions) and (not done_i):
+                bonus += self._jump_bonus
+            if done_i:
+                bonus -= self._death_penalty
+
+            shaped_rewards[i] += bonus
+
+            info = infos[i] if infos[i] is not None else {}
+            info = dict(info) if isinstance(info, dict) else {}
+            info["reward_raw"] = float(raw_rewards[i])
+            info["reward_shaped_bonus"] = float(bonus)
+            infos[i] = info
+
+        return shaped_rewards
 
     def reset(self):
         obs = self.venv.reset()
@@ -78,6 +116,7 @@ class ProcgenObsWrapper:
         rgb_raw = _extract_rgb(obs)
         self._last_rgb = rgb_raw[0] if rgb_raw.ndim == 4 else rgb_raw
         obs = _grayscale_resize(obs, self.obs_size)
+        rewards = self._shape_rewards(rewards, dones, infos, actions)
         for i in range(len(infos)):
             info = infos[i] if infos[i] is not None else {}
             info = dict(info) if isinstance(info, dict) else {}
@@ -99,6 +138,7 @@ class ProcgenObsWrapper:
         return self.venv.set_attr(*args, **kwargs)
 
     def step_async(self, actions):
+        self._last_actions = actions
         self.venv.step_async(actions)
 
     def step_wait(self):
@@ -109,6 +149,7 @@ class ProcgenObsWrapper:
         rgb_raw = _extract_rgb(obs)
         self._last_rgb = rgb_raw[0] if rgb_raw.ndim == 4 else rgb_raw
         obs = _grayscale_resize(obs, self.obs_size)
+        rewards = self._shape_rewards(rewards, dones, infos, self._last_actions)
         for i in range(len(infos)):
             info = infos[i] if infos[i] is not None else {}
             info = dict(info) if isinstance(info, dict) else {}

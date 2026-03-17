@@ -15,6 +15,7 @@ if PROJECT_ROOT not in sys.path:
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, EvalCallback
+from stable_baselines3.common.utils import get_schedule_fn
 from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage
 
 from envs import make_vec_env
@@ -121,7 +122,31 @@ def main():
         if not os.path.isfile(args.resume):
             raise FileNotFoundError(f"--resume 指定的模型不存在: {args.resume}")
         model = PPO.load(args.resume, env=vec_env)
+        # 恢复训练时，显式覆盖可调超参数，避免沿用 checkpoint 内旧配置
+        if getattr(model, "n_envs", args.n_envs) != args.n_envs:
+            raise ValueError(
+                f"--resume 模型的 n_envs={model.n_envs} 与当前 --n-envs={args.n_envs} 不一致。"
+                "请使用相同 n_envs 继续训练，或不使用 --resume 重新训练。"
+            )
+        model.n_steps = args.n_steps
+        model.batch_size = args.batch_size
+        model.n_epochs = args.n_epochs
+        model.ent_coef = args.ent_coef
+        model.gamma = args.gamma
         model.learning_rate = args.learning_rate
+        model.lr_schedule = get_schedule_fn(args.learning_rate)
+        # 重新构建 rollout buffer，确保 n_steps / n_envs / gamma 覆盖后形状与配置一致
+        # 兼容不同 SB3 版本：新版本可能没有 rollout_buffer_class 字段
+        rollout_buffer_cls = getattr(model, "rollout_buffer_class", type(model.rollout_buffer))
+        model.rollout_buffer = rollout_buffer_cls(
+            model.n_steps,
+            model.observation_space,
+            model.action_space,
+            device=model.device,
+            gamma=model.gamma,
+            gae_lambda=model.gae_lambda,
+            n_envs=args.n_envs,
+        )
         model.tensorboard_log = log_dir
         print(f"已从 checkpoint 恢复并继续训练: {args.resume}")
     else:

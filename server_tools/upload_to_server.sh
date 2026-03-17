@@ -23,7 +23,6 @@ EXCLUDE_PATTERNS=(
     "--exclude=.DS_Store"
     "--exclude=*.log"
     "--exclude=*.pt"
-    "--exclude=best_model"
     "--exclude=callback_logs"
     "--exclude=logs"
 )
