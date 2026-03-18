@@ -49,7 +49,7 @@ def main():
             "请用 --model 指定正确路径，例如：best_model/best_model.zip"
         )
 
-    # 使用与训练一致的预处理：64x64 灰度 + 4 帧堆叠
+    # 使用与训练一致的预处理：84x84 灰度 + 4 帧堆叠
     try:
         env_for_model = make_vec_env(args.env, n_envs=1, use_subproc=False, frame_stack=4)
     except ImportError as e:

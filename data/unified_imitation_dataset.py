@@ -1,6 +1,6 @@
 """
 统一模仿学习数据集：支持 mario、jumper、rl_expert_mario、rl_expert_jumper。
-每样本：4 张 PNG 堆叠为 (64, 64, 4)，label.txt 为 0–14。
+每样本：4 张 PNG 堆叠为 (84, 84, 4)，label.txt 为 0–14。
 """
 import os
 from pathlib import Path
@@ -59,11 +59,11 @@ class UnifiedImitationDataset(Dataset):
         for i in range(4):
             img_path = Path(sample_dir) / f"frame_{i}.png"
             img = np.array(Image.open(img_path).convert("L"))
-            if img.shape != (64, 64):
+            if img.shape != (84, 84):
                 from PIL import Image as PILImage
-                img = np.array(PILImage.fromarray(img).resize((64, 64)))
+                img = np.array(PILImage.fromarray(img).resize((84, 84)))
             frames.append(img)
-        obs = np.stack(frames, axis=-1)  # (64, 64, 4)
+        obs = np.stack(frames, axis=-1)  # (84, 84, 4)
         obs = obs.astype(np.float32) / 255.0
 
         if self.transform:

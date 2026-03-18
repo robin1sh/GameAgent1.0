@@ -1,5 +1,5 @@
 """
-PPO 训练脚本：支持 mario / jumper / both，使用自定义 CNN，统一 15 维动作空间。
+PPO 训练脚本：支持 mario / jumper / coinrun / both，使用自定义 CNN，统一 15 维动作空间。
 支持 --pretrain-path 加载模仿学习 backbone 初始化。
 """
 import argparse
@@ -19,13 +19,21 @@ from stable_baselines3.common.utils import get_schedule_fn
 from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage
 
 from envs import make_vec_env
-from model_script import CustomCNN
+from CNN_TEMPLATE import CustomCNN
 from callbacks import MetricsEvalCallback
 
 
+def build_linear_schedule(initial_value: float, final_value: float):
+    """线性学习率调度：训练开始时为 initial_value，结束时衰减到 final_value。"""
+    def schedule(progress_remaining: float) -> float:
+        return final_value + (initial_value - final_value) * progress_remaining
+
+    return schedule
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="PPO 训练：Mario / Jumper / 联合")
-    parser.add_argument("--env", default="mario", choices=["mario", "jumper", "both"],
+    parser = argparse.ArgumentParser(description="PPO 训练：Mario / Jumper / CoinRun / 联合")
+    parser.add_argument("--env", default="mario", choices=["mario", "jumper", "coinrun", "both"],
                         help="训练环境")
     parser.add_argument("--n-envs", type=int, default=10, help="并行环境数")
     parser.add_argument("--total-timesteps", type=int, default=int(1e7), help="总训练步数")
@@ -40,23 +48,42 @@ def parse_args():
         "--fixed-level",
         action="store_true",
         default=True,
-        help="jumper 使用固定关卡（默认开启，可复现训练）",
+        help="procgen 环境使用固定关卡（默认开启，可复现训练）",
     )
     parser.add_argument(
         "--no-fixed-level",
         action="store_false",
         dest="fixed_level",
-        help="关闭 jumper 固定关卡，使用随机关卡",
+        help="关闭 procgen 固定关卡，使用随机关卡",
     )
-    parser.add_argument("--start-level", type=int, default=0, help="jumper 固定关卡 ID（第一关为 0）")
-    parser.add_argument("--distribution-mode", default="easy", help="jumper 关卡分布模式，建议 easy")
+    parser.add_argument("--start-level", type=int, default=0, help="procgen 固定关卡 ID（第一关为 0）")
+    parser.add_argument("--distribution-mode", default="easy", help="procgen 关卡分布模式，建议 easy")
     # PPO 超参数（允许从入口脚本注入，便于单任务独立微调）
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="PPO 学习率")
+    parser.add_argument(
+        "--lr-schedule",
+        choices=["constant", "linear"],
+        default="constant",
+        help="学习率调度方式：constant=常数，linear=线性衰减",
+    )
+    parser.add_argument(
+        "--final-learning-rate",
+        type=float,
+        default=1e-5,
+        help="当 --lr-schedule=linear 时使用的最终学习率",
+    )
     parser.add_argument("--n-steps", type=int, default=2048, help="每次 rollout 步数")
     parser.add_argument("--batch-size", type=int, default=8192, help="PPO 批大小")
     parser.add_argument("--n-epochs", type=int, default=5, help="每次更新 epoch 数")
     parser.add_argument("--ent-coef", type=float, default=0.1, help="熵正则系数")
     parser.add_argument("--gamma", type=float, default=0.95, help="折扣因子")
+    parser.add_argument(
+        "--eval-freq",
+        type=int,
+        default=10000,
+        help="评估间隔（按环境总步数计，内部会自动按 n_envs 折算为回调步数）",
+    )
+    parser.add_argument("--n-eval-episodes", type=int, default=5, help="每次评估的回合数")
     return parser.parse_args()
 
 
@@ -64,6 +91,11 @@ def main():
     args = parse_args()
     if not args.exp_id:
         args.exp_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    if args.lr_schedule == "linear":
+        learning_rate = build_linear_schedule(args.learning_rate, args.final_learning_rate)
+    else:
+        learning_rate = args.learning_rate
 
     vec_env = make_vec_env(
         env_name=args.env,
@@ -107,8 +139,9 @@ def main():
         eval_env,
         best_model_save_path=save_path,
         log_path=callback_log_dir,
-        eval_freq=max(10000 // args.n_envs, 1),
-        n_eval_episodes=5,
+        # SB3 的 eval_freq 按 callback 调用次数计；这里折算为“环境总步数”更直观。
+        eval_freq=max(args.eval_freq // args.n_envs, 1),
+        n_eval_episodes=args.n_eval_episodes,
     )
     metrics_callback = MetricsEvalCallback(verbose=1)
     callback = CallbackList([eval_callback, metrics_callback])
@@ -133,8 +166,8 @@ def main():
         model.n_epochs = args.n_epochs
         model.ent_coef = args.ent_coef
         model.gamma = args.gamma
-        model.learning_rate = args.learning_rate
-        model.lr_schedule = get_schedule_fn(args.learning_rate)
+        model.learning_rate = learning_rate
+        model.lr_schedule = get_schedule_fn(learning_rate)
         # 重新构建 rollout buffer，确保 n_steps / n_envs / gamma 覆盖后形状与配置一致
         # 兼容不同 SB3 版本：新版本可能没有 rollout_buffer_class 字段
         rollout_buffer_cls = getattr(model, "rollout_buffer_class", type(model.rollout_buffer))
@@ -154,7 +187,7 @@ def main():
             policy="CnnPolicy",
             env=vec_env,
             policy_kwargs=policy_kwargs,
-            learning_rate=args.learning_rate,
+            learning_rate=learning_rate,
             n_steps=args.n_steps,
             batch_size=args.batch_size,
             n_epochs=args.n_epochs,

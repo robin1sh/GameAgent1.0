@@ -1,7 +1,0 @@
-# 实验 B2：混合训练
-exp_id: b2_mixed
-mode: mixed
-total_timesteps: 10000000
-n_envs: 10
-save_path: ./best_model/
-log_path: ./logs/

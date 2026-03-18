@@ -44,7 +44,7 @@ def set_seed(seed=42):
 def build_imitation_model():
     """
     与 CustomCNN 结构一致的 backbone + 15 类分类头。
-    输入 (N, 4, 64, 64) channels_first。
+    输入 (N, 4, 84, 84) channels_first。
     """
     class ImitationCNN(nn.Module):
         def __init__(self):
@@ -59,7 +59,7 @@ def build_imitation_model():
                 nn.Flatten(),
             )
             with torch.no_grad():
-                x = torch.zeros(1, 4, 64, 64)
+                x = torch.zeros(1, 4, 84, 84)
                 n_flatten = self.cnn(x).shape[1]
             self.linear = nn.Sequential(
                 nn.Linear(n_flatten, FEATURES_DIM),

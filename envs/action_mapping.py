@@ -54,7 +54,7 @@ class ActionMappingWrapper(gym.ActionWrapper):
     """
     将统一 15 维动作映射到各环境原生动作空间。
     策略网络输出 0-14，此 wrapper 负责映射到环境原生动作。
-    env_type: "mario" | "jumper"
+    env_type: "mario" | "jumper" | "coinrun"
     """
 
     UNIFIED_ACTION_DIM = 15
@@ -65,7 +65,7 @@ class ActionMappingWrapper(gym.ActionWrapper):
         if env_type == "mario":
             self._action_map = MARIO_ACTION_MAP
             self.action_space = spaces.Discrete(self.UNIFIED_ACTION_DIM)
-        elif env_type == "jumper":
+        elif env_type in ("jumper", "coinrun"):
             self._action_map = None
             self.action_space = spaces.Discrete(self.UNIFIED_ACTION_DIM)
         else:

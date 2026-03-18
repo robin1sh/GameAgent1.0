@@ -1,5 +1,5 @@
 """
-自定义 CNN 特征提取器：适配 64x64 灰度 4 帧堆叠输入。
+自定义 CNN 特征提取器：适配 84x84 灰度 4 帧堆叠输入。
 参考计划附录 8.2 与 NatureCNN 结构，支持 channels_first / channels_last。
 """
 import torch as th
@@ -15,7 +15,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class CustomCNN(BaseFeaturesExtractor):
     """
-    通用 CNN 特征提取器，输入 64x64 图像（4 帧堆叠）。
+    通用 CNN 特征提取器，输入 84x84 图像（4 帧堆叠）。
     支持 (C,H,W) 或 (H,W,C) 格式，与 VecFrameStack channels_order 一致。
     """
 

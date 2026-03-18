@@ -10,6 +10,6 @@ if PROJECT_ROOT not in sys.path:
 
 from envs import make_mario_env, make_vec_env
 
-# 兼容旧代码：make_env 返回马里奥环境（64x64 灰度，15 维动作）
+# 兼容旧代码：make_env 返回马里奥环境（84x84 灰度，15 维动作）
 def make_env():
     return make_mario_env()

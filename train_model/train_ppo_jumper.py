@@ -22,7 +22,7 @@ JUMPER_HPARAMS = [
 
 def main():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    target_script = os.path.join(project_root, "train", "train_ppo_model.py")
+    target_script = os.path.join(project_root, "train_model", "train_ppo_model.py")
 
     # 如果用户手动传了 --env，则去掉，避免与固定入口冲突
     passthrough = []

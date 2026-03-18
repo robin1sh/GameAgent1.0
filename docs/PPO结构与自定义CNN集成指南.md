@@ -143,8 +143,8 @@ nn.Flatten() → nn.Linear(n_flatten, features_dim)
 ### 4.3 本项目中的观测空间
 
 - **环境**：Super Mario Bros v2
-- **预处理（当前实现）**：灰度 + 64×64 缩放 + `VecFrameStack(4)` 4 帧堆叠
-- **观测形状（当前实现）**：`(4, 64, 64)`（通道优先）或 `(64, 64, 4)`（通道在后）
+- **预处理（当前实现）**：灰度 + 84×84 缩放 + `VecFrameStack(4)` 4 帧堆叠
+- **观测形状（当前实现）**：`(4, 84, 84)`（通道优先）或 `(84, 84, 4)`（通道在后）
 
 ---
 
@@ -154,8 +154,8 @@ nn.Flatten() → nn.Linear(n_flatten, features_dim)
 
 将你在 **模仿学习** 中训练的 CNN（当前以 `train/train_cnn_imitation_unified.py` 为主）作为 PPO 的**特征提取器**，替代默认的 NatureCNN。
 
-- **模仿学习 CNN（当前实现）**：输入 4×64×64（4 帧堆叠）→ 输出 15 类 logits
-- **PPO 特征提取器（当前实现）**：输入 4×64×64（或 64×64×4）→ 输出 `features_dim` 维特征向量
+- **模仿学习 CNN（当前实现）**：输入 4×84×84（4 帧堆叠）→ 输出 15 类 logits
+- **PPO 特征提取器（当前实现）**：输入 4×84×84（或 84×84×4）→ 输出 `features_dim` 维特征向量
 
 需要做两件事：
 
@@ -165,7 +165,7 @@ nn.Flatten() → nn.Linear(n_flatten, features_dim)
 ### 5.2 当前代码中的 CNN 结构（以仓库实现为准）
 
 ```python
-# models/custom_cnn.py / train/train_cnn_imitation_unified.py
+# CNN_TEMPLATE/custom_cnn.py / train_model/train_cnn_imitation_unified.py
 Conv2d(4,32,8,4) → ReLU
 Conv2d(32,64,4,2) → ReLU
 Conv2d(64,64,3,1) → ReLU
@@ -267,7 +267,7 @@ model.learn(total_timesteps=1e7, callback=eval_callback)
 
 ```python
 # envs/unified_env.py + envs/mario_env.py + envs/jumper_env.py
-# Mario/Jumper 统一预处理为 64x64 灰度，并在训练时统一做 VecFrameStack(4)
+# Mario/Jumper 统一预处理为 84x84 灰度，并在训练时统一做 VecFrameStack(4)
 ```
 
 ### 6.2 向量化训练（当前实现）
@@ -300,6 +300,30 @@ python playing/record_jumper_unified.py --no-fixed-level --distribution-mode exp
 # PPO 训练（同一 exploration 单关卡）
 python train/train_ppo_model.py --env jumper --no-fixed-level --distribution-mode exploration --total-timesteps 5000000 --exp-id jumper_exploration_v1
 ```
+
+---
+
+### 6.5 CoinRun 作为更简化的 Procgen 第二环境
+
+如果你想保留“跨游戏”实验设置，但希望第二个环境比 `jumper` 更简单、且更接近 Mario 的横版向右平台跳跃结构，可以新增 `coinrun` 作为替代环境。
+
+当前仓库已提供独立入口，接口与 `jumper` 基本一致：
+
+```bash
+# 记录 imitation 数据（CoinRun）
+python playing/record_coinrun_unified.py --fixed-level --start-level 0 --distribution-mode easy
+```
+
+```bash
+# PPO 训练（CoinRun）
+python train_model/train_ppo_coinrun.py --n-envs 10 --total-timesteps 5000000 --exp-id coinrun_baseline_v1
+```
+
+实现原则：
+
+- 继续复用 Procgen 的 15 动作空间，不额外重写统一动作映射；
+- 继续复用 `84x84` 灰度、跳帧与 4 帧堆叠预处理；
+- 不替换现有 `jumper`，而是并行保留，便于后续做对照实验。
 
 ---
 

@@ -1,9 +1,9 @@
 """
-Jumper 统一格式采集：4 帧堆叠 + 统一动作 (0-14)。
-Procgen 原生 15 动作即统一动作，键盘映射后直接保存。
-输出到 data_imitation_unified/jumper/
+CoinRun 统一格式采集：4 帧堆叠 + 统一动作 (0-14)。
+CoinRun 与 Jumper 同属 Procgen，统一动作直接映射为 Procgen 原生 15 动作。
+输出到 data_imitation_unified/coinrun/
 
-用法：python playing/record_jumper_unified.py
+用法：python playing/record_coinrun_unified.py
   默认固定关卡（第一关），可用 --no-fixed-level 切换为随机关卡
   默认自动续写样本编号，不覆盖旧数据
 
@@ -27,12 +27,13 @@ import cv2
 import pygame
 import numpy as np
 
-from envs.jumper_env import make_jumper_vec_env, PROCGEN_AVAILABLE
+from envs.coinrun_env import make_coinrun_vec_env, PROCGEN_AVAILABLE
 
-OUT_DIR = os.path.join(PROJECT_ROOT, "data_imitation_unified", "jumper")
+OUT_DIR = os.path.join(PROJECT_ROOT, "data_imitation_unified", "coinrun")
 LEVEL_CONFIG_PATH = os.path.join(OUT_DIR, "level_config.json")
-SAVE_EVERY = 2  # 每 N 步保存一次
-IDLE_SAVE_EVERY = 8  # idle(动作4) 低频采样，降低静止样本占比
+SAVE_EVERY = 2
+IDLE_SAVE_EVERY = 8
+
 
 def _get_action_from_keys(keys):
     """根据当前按键组合返回统一动作。"""
@@ -46,7 +47,6 @@ def _get_action_from_keys(keys):
         return 0
     if right and down:
         return 6
-    # 支持方向+跳跃组合，避免 right+space 被误识别成纯 right
     if left and (up or jump):
         return 2
     if right and (up or jump):
@@ -65,10 +65,7 @@ def _get_action_from_keys(keys):
 
 
 def _get_start_sample_id(out_dir):
-    """
-    从现有目录中恢复样本编号，避免新一轮采集覆盖历史数据。
-    仅识别纯数字目录名（如 000123）。
-    """
+    """从现有目录中恢复样本编号，避免覆盖历史数据。"""
     max_id = 0
     for name in os.listdir(out_dir):
         if name.isdigit():
@@ -79,7 +76,7 @@ def _get_start_sample_id(out_dir):
 def _save_level_config(path, fixed_level, start_level, distribution_mode):
     """保存本次采集关卡配置，供训练脚本复用。"""
     payload = {
-        "env": "jumper",
+        "env": "coinrun",
         "fixed_level": bool(fixed_level),
         "start_level": int(start_level),
         "distribution_mode": str(distribution_mode),
@@ -89,7 +86,7 @@ def _save_level_config(path, fixed_level, start_level, distribution_mode):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Jumper 统一格式采集")
+    parser = argparse.ArgumentParser(description="CoinRun 统一格式采集")
     parser.add_argument(
         "--fixed-level",
         action="store_true",
@@ -131,10 +128,10 @@ def main():
     )
     pygame.init()
     screen = pygame.display.set_mode((400, 400))
-    pygame.display.set_caption("Jumper - 键盘操作采集")
+    pygame.display.set_caption("CoinRun - 键盘操作采集")
 
     # 采集时保持正常帧率，不在环境层做跳帧；再手动按 4 帧间隔取样，与 Mario 采集保持一致。
-    venv = make_jumper_vec_env(
+    venv = make_coinrun_vec_env(
         n_envs=1,
         fixed_level=args.fixed_level,
         start_level=args.start_level,
@@ -146,7 +143,7 @@ def main():
         obs = obs[0]
     obs = obs[0] if obs.ndim == 4 else obs
     gray_init = obs[:, :, 0] if obs.ndim == 3 else obs
-    rgb_init = getattr(venv, "_last_rgb", None)  # 彩色显示用
+    rgb_init = getattr(venv, "_last_rgb", None)
 
     frame_buffer = deque(maxlen=13)
     sample_id = _get_start_sample_id(OUT_DIR)
@@ -155,7 +152,7 @@ def main():
     running = True
 
     def _render_obs(disp, use_rgb=True):
-        """将 84x84 观测放大并渲染到 pygame 窗口。disp: RGB (H,W,3) 或灰度 (H,W)。"""
+        """将 84x84 观测放大并渲染到 pygame 窗口。disp: RGB(H,W,3) 或灰度(H,W)。"""
         if use_rgb and disp.ndim == 3 and disp.shape[-1] == 3:
             rgb = disp
         else:
@@ -170,7 +167,7 @@ def main():
         screen.blit(surf, (0, 0))
         pygame.display.flip()
 
-    _render_obs(rgb_init if rgb_init is not None else gray_init, use_rgb=(rgb_init is not None))  # 初始画面
+    _render_obs(rgb_init if rgb_init is not None else gray_init, use_rgb=(rgb_init is not None))
     print(f"采集数据保存到: {OUT_DIR}")
     print(f"关卡配置已保存: {LEVEL_CONFIG_PATH}")
     print(f"当前起始样本编号: {sample_id + 1:06d}")
@@ -181,9 +178,7 @@ def main():
         f"idle每 {args.idle_save_every} 步保存"
     )
     print("方向键移动，空格/W 跳跃。关闭窗口退出。")
-    print("⚠️ 若键盘无反应：请先【点击游戏窗口】使其获得焦点（macOS 常见）")
 
-    # 等待用户点击窗口或按键，确保窗口获得焦点（macOS 上点击后键盘才有效）
     waiting = True
     while waiting and running:
         for event in pygame.event.get():
@@ -209,7 +204,7 @@ def main():
         if not running:
             break
 
-        pygame.event.pump()  # 确保事件队列更新，否则 macOS 上 get_pressed 可能无响应
+        pygame.event.pump()
         keys = pygame.key.get_pressed()
         action = _get_action_from_keys(keys)
 
@@ -217,7 +212,7 @@ def main():
         obs, rewards, dones, infos = result[:4]
         if isinstance(obs, tuple):
             obs = obs[0]
-        obs = obs[0]  # (1,84,84,1) -> (84,84,1)
+        obs = obs[0]
         gray = obs[:, :, 0] if obs.ndim == 3 else obs
         frame_buffer.append(gray.copy())
         rgb = infos[0].get("rgb", None) if infos and len(infos) > 0 else None
@@ -238,7 +233,6 @@ def main():
 
         step_count += 1
         if len(frame_buffer) >= 13:
-            # idle(动作4) 低频保存，避免静止帧过多导致类别分布失衡
             if action == 4:
                 should_save = (step_count % max(1, args.idle_save_every) == 0)
             else:
@@ -250,14 +244,13 @@ def main():
             sample_id += 1
             sample_dir = os.path.join(OUT_DIR, f"{sample_id:06d}")
             os.makedirs(sample_dir, exist_ok=False)
-            # 取 t-12, t-8, t-4, t 四帧（每 4 帧一帧），与 Mario 采集口径一致
             frames_4step = [frame_buffer[-13], frame_buffer[-9], frame_buffer[-5], frame_buffer[-1]]
-            for i, f in enumerate(frames_4step):
-                cv2.imwrite(os.path.join(sample_dir, f"frame_{i}.png"), f)
+            for i, frame in enumerate(frames_4step):
+                cv2.imwrite(os.path.join(sample_dir, f"frame_{i}.png"), frame)
             with open(os.path.join(sample_dir, "label.txt"), "w") as f:
                 f.write(str(action))
 
-        clock.tick(15)  # 约 15 FPS 采集
+        clock.tick(15)
 
     venv.close()
     pygame.quit()

@@ -26,8 +26,8 @@ SAVE_EVERY = 2  # 每 N 步保存一次，避免冗余
 RIGHT_SAVE_EVERY = 4  # right 动作采样更稀疏
 
 
-def _frame_to_gray_64(obs):
-    """将观测转为 64x64 灰度，用于保存 PNG。"""
+def _frame_to_gray_84(obs):
+    """将观测转为 84x84 灰度，用于保存 PNG。"""
     if obs.ndim == 3:
         if obs.shape[-1] == 1:
             return obs[:, :, 0]
@@ -39,22 +39,22 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     env = make_mario_env_for_recording()
 
-    frame_buffer = deque(maxlen=33)  # 存最近 33 帧，用于每 8 帧取一帧组成 4 帧
+    frame_buffer = deque(maxlen=13)  # 存最近 13 帧，用于每 4 帧取一帧组成 4 帧
     sample_id = 0
 
     def callback(state, action, reward, done, next_state):
         nonlocal sample_id
-        # next_state 为 step 后的观测，需转为 64x64 灰度
-        gray = _frame_to_gray_64(next_state)
-        if gray.shape != (64, 64):
-            gray = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
+        # next_state 为 step 后的观测，需转为 84x84 灰度
+        gray = _frame_to_gray_84(next_state)
+        if gray.shape != (84, 84):
+            gray = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
         frame_buffer.append(gray.copy())
 
         if done:
             frame_buffer.clear()
             return
 
-        if len(frame_buffer) < 25:
+        if len(frame_buffer) < 13:
             return
 
         # Mario 原生动作 0-11 -> 统一动作 0-14
@@ -69,9 +69,9 @@ def main():
         sample_id += 1
         sample_dir = os.path.join(OUT_DIR, f"{sample_id:06d}")
         os.makedirs(sample_dir, exist_ok=True)
-        # 取 t-24, t-16, t-8, t 四帧（每 8 帧一帧，与 PPO 一致）
-        frames_8step = [frame_buffer[-25], frame_buffer[-17], frame_buffer[-9], frame_buffer[-1]]
-        for i, f in enumerate(frames_8step):
+        # 取 t-12, t-8, t-4, t 四帧（每 4 帧一帧，与 PPO 一致）
+        frames_4step = [frame_buffer[-13], frame_buffer[-9], frame_buffer[-5], frame_buffer[-1]]
+        for i, f in enumerate(frames_4step):
             cv2.imwrite(os.path.join(sample_dir, f"frame_{i}.png"), f)
         with open(os.path.join(sample_dir, "label.txt"), "w") as f:
             f.write(str(unified_action))

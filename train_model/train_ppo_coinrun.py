@@ -1,22 +1,22 @@
 """
-Mario 专用 PPO 训练入口。
-作用：固定 --env mario，复用 train_ppo_model.py 的全部参数与逻辑。
+CoinRun 专用 PPO 训练入口。
+作用：固定 --env coinrun，复用 train_ppo_model.py 的全部参数与逻辑。
 """
 import os
 import subprocess
 import sys
 
-# Mario 默认超参数（后续可直接在此微调）
-MARIO_HPARAMS = [
-    "--save-path", "./best_model/mario/",
-    "--log-path", "./logs/mario/",
-    "--callback-log-path", "./callback_logs/mario/",
-    "--learning-rate", "3e-4",
-    "--n-steps", "2048",
-    "--batch-size", "2048",
-    "--n-epochs", "10",
-    "--ent-coef", "0.1",
-    "--gamma", "0.95",
+# CoinRun 默认超参数（先复用 Jumper 的稳定配置，后续可按实验结果微调）
+COINRUN_HPARAMS = [
+    "--save-path", "./best_model/coinrun/",
+    "--log-path", "./logs/coinrun/",
+    "--callback-log-path", "./callback_logs/coinrun/",
+    "--learning-rate", "7e-5",
+    "--n-steps", "1024",
+    "--batch-size", "4096",
+    "--n-epochs", "8",
+    "--ent-coef", "0.05",
+    "--gamma", "0.99",
 ]
 
 
@@ -39,7 +39,7 @@ def main():
         passthrough.append(arg)
 
     # 默认参数放前面，命令行显式传参放后面可覆盖默认值
-    cmd = [sys.executable, target_script, "--env", "mario", *MARIO_HPARAMS, *passthrough]
+    cmd = [sys.executable, target_script, "--env", "coinrun", *COINRUN_HPARAMS, *passthrough]
     raise SystemExit(subprocess.call(cmd))
 
 
