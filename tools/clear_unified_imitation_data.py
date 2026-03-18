@@ -21,11 +21,12 @@ DATA_ROOT = PROJECT_ROOT / "data_imitation_unified"
 SOURCE_TO_DIRS = {
     "mario": ["mario"],
     "jumper": ["jumper"],
-    "human_both": ["mario", "jumper"],
+    "coinrun": ["coinrun"],
+    "human_both": ["mario", "coinrun"],
     "expert_mario": ["rl_expert_mario"],
     "expert_jumper": ["rl_expert_jumper"],
     "expert_both": ["rl_expert_mario", "rl_expert_jumper"],
-    "all": ["mario", "jumper", "rl_expert_mario", "rl_expert_jumper"],
+    "all": ["mario", "jumper", "coinrun", "rl_expert_mario", "rl_expert_jumper"],
 }
 
 
@@ -61,7 +62,7 @@ def main():
         "--source",
         required=True,
         choices=list(SOURCE_TO_DIRS.keys()),
-        help="清理目标：mario/jumper/human_both/expert_mario/expert_jumper/expert_both/all",
+        help="清理目标：mario/jumper/coinrun/human_both/expert_mario/expert_jumper/expert_both/all",
     )
     parser.add_argument(
         "--dry-run",

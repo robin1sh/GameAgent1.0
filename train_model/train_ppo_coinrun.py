@@ -11,12 +11,12 @@ COINRUN_HPARAMS = [
     "--save-path", "./best_model/coinrun/",
     "--log-path", "./logs/coinrun/",
     "--callback-log-path", "./callback_logs/coinrun/",
-    "--learning-rate", "7e-5",
-    "--n-steps", "1024",
-    "--batch-size", "4096",
+    "--learning-rate", "3e-4",
+    "--n-steps", "2048",
+    "--batch-size", "2048",
     "--n-epochs", "8",
-    "--ent-coef", "0.05",
-    "--gamma", "0.99",
+    "--ent-coef", "0.1",
+    "--gamma", "0.95",
 ]
 
 

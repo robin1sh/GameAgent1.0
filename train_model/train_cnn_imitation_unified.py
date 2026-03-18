@@ -27,7 +27,8 @@ DATA_ROOT = os.path.join(PROJECT_ROOT, "data_imitation_unified")
 SOURCE_TO_DIRS = {
     "mario": ["mario"],
     "jumper": ["jumper"],
-    "human_both": ["mario", "jumper"],
+    "coinrun": ["coinrun"],
+    "human_both": ["mario", "coinrun"],
     "expert_mario": ["rl_expert_mario"],
     "expert_jumper": ["rl_expert_jumper"],
     "expert_both": ["rl_expert_mario", "rl_expert_jumper"],
@@ -84,7 +85,7 @@ def parse_args():
         "--source",
         default="expert_both",
         choices=list(SOURCE_TO_DIRS.keys()),
-        help="逻辑数据源：mario/jumper/human_both/expert_mario/expert_jumper/expert_both",
+        help="逻辑数据源：mario/jumper/coinrun/human_both/expert_mario/expert_jumper/expert_both",
     )
     parser.add_argument("--data-root", default=DATA_ROOT)
     parser.add_argument("--epochs", type=int, default=30)

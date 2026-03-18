@@ -214,7 +214,6 @@ def main():
             obs = obs[0]
         obs = obs[0]
         gray = obs[:, :, 0] if obs.ndim == 3 else obs
-        frame_buffer.append(gray.copy())
         rgb = infos[0].get("rgb", None) if infos and len(infos) > 0 else None
         _render_obs(rgb if rgb is not None else gray, use_rgb=(rgb is not None))
 
@@ -230,6 +229,9 @@ def main():
             _render_obs(rgb if rgb is not None else gray, use_rgb=(rgb is not None))
             clock.tick(30)
             continue
+
+        # 死亡当步不写入 buffer，避免终止帧混入后续采样窗口
+        frame_buffer.append(gray.copy())
 
         step_count += 1
         if len(frame_buffer) >= 13:
