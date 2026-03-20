@@ -17,7 +17,7 @@ import torch.optim as optim
 from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader, random_split
 
-from data.unified_imitation_dataset import UnifiedImitationDataset, DATA_SOURCES
+from dataset.unified_imitation_dataset import UnifiedImitationDataset, DATA_SOURCES
 
 NUM_CLASSES = 15
 FEATURES_DIM = 512

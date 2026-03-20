@@ -38,6 +38,7 @@ def parse_args():
     parser.add_argument("--deterministic", action="store_true", help="确定性动作")
     parser.add_argument("--render", action="store_true", help="是否显示 pygame 画面")
     parser.add_argument("--render-scale", type=int, default=6, help="画面放大倍数")
+    parser.add_argument("--fps", type=int, default=12, help="渲染帧率上限，越小越慢")
     parser.add_argument(
         "--fixed-level",
         action="store_true",
@@ -77,11 +78,13 @@ def main():
     model = PPO.load(args.model, env=vec_env)
 
     screen = None
+    clock = None
     screen_size = (64 * args.render_scale, 64 * args.render_scale)
     if args.render:
         pygame.init()
         screen = pygame.display.set_mode(screen_size)
         pygame.display.set_caption("CoinRun PPO 预览")
+        clock = pygame.time.Clock()
 
     obs = vec_env.reset()
     if isinstance(obs, tuple):
@@ -109,6 +112,10 @@ def main():
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+
+            # 用固定帧率限制播放速度，便于观察模型行为。
+            if clock is not None and args.fps > 0:
+                clock.tick(args.fps)
 
         if np.any(dones):
             obs = vec_env.reset()
