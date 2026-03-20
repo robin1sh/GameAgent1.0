@@ -23,6 +23,32 @@ data_imitation/
 data_imitation_unified/
 logs/
 
+# Allow selected tracked model artifacts
+!best_model/
+!best_model/mario/
+!best_model/mario/mario_baseline_ppo_v1/
+!best_model/mario/mario_baseline_ppo_v1/best_model.zip
+!best_model/mario/mario_baseline_ppo_v1/ppo_mario_final.zip
+!best_model/mario/mario_baseline_ppo_v2/
+!best_model/mario/mario_baseline_ppo_v2/best_model.zip
+!best_model/mario/mario_baseline_ppo_v2/ppo_mario_final.zip
+!best_model/mario/mario_baseline_ppo_v3/
+!best_model/mario/mario_baseline_ppo_v3/best_model.zip
+!best_model/mario/mario_baseline_ppo_v3/ppo_mario_final.zip
+!best_model/mario/mario_baseline_ppo_v4_stable/
+!best_model/mario/mario_baseline_ppo_v4_stable/best_model.zip
+!best_model/mario/mario_baseline_ppo_v4_stable/ppo_mario_final.zip
+!best_model/coinrun/
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v1/
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v1/best_model.zip
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v1/ppo_coinrun_final.zip
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v2/
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v2/best_model.zip
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v2/ppo_coinrun_final.zip
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v3/
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v3/best_model.zip
+!best_model/coinrun/coinrun_baseline_ppo_random_easy_v3/ppo_coinrun_final.zip
+
 # Local upload/runtime state
 .last_upload_timestamp
 .upload_state
