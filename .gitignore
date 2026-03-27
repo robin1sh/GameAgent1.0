@@ -49,6 +49,13 @@ logs/
 !best_model/coinrun/coinrun_baseline_ppo_random_easy_v3/best_model.zip
 !best_model/coinrun/coinrun_baseline_ppo_random_easy_v3/ppo_coinrun_final.zip
 
+# Allow all model artifacts and experiment records
+!best_model/**
+!logs/
+!logs/**
+!callback_logs/
+!callback_logs/**
+
 # Local upload/runtime state
 .last_upload_timestamp
 .upload_state
