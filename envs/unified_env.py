@@ -32,9 +32,21 @@ def make_vec_env(
     n_envs: int = 10,
     use_subproc: bool = True,
     frame_stack: int = 4,
+    mario_ratio: float = 0.5,
+    coinrun_reward_scale: float = 1.0,
+    coinrun_progress_coef: float = 0.05,
+    coinrun_success_bonus: float = 10.0,
+    coinrun_fail_penalty: float = 2.0,
+    coinrun_step_penalty: float = 0.002,
+    use_aligned_reward: bool = False,
+    progress_coef: float = 0.02,
+    success_bonus: float = 100.0,
+    fail_penalty: float = 20.0,
+    step_penalty: float = 0.002,
     fixed_level: bool = False,
     start_level: int = 0,
     distribution_mode: str = "easy",
+    max_episode_steps: int = 3000,
 ):
     """
     创建向量化环境，观测统一为 (64, 64, 4) channels_last。
@@ -42,9 +54,13 @@ def make_vec_env(
     """
     if env_name.lower() == "mario":
         if use_subproc and n_envs > 1:
-            vec = SubprocVecEnv([lambda: make_mario_env() for _ in range(n_envs)])
+            vec = SubprocVecEnv(
+                [lambda: make_mario_env(max_episode_steps=max_episode_steps) for _ in range(n_envs)]
+            )
         else:
-            vec = DummyVecEnv([lambda: make_mario_env() for _ in range(max(1, n_envs))])
+            vec = DummyVecEnv(
+                [lambda: make_mario_env(max_episode_steps=max_episode_steps) for _ in range(max(1, n_envs))]
+            )
         vec = VecFrameStack(vec, n_stack=frame_stack, channels_order="last")
         return vec
 
@@ -68,13 +84,37 @@ def make_vec_env(
             fixed_level=fixed_level,
             start_level=start_level,
             distribution_mode=distribution_mode,
+            max_episode_steps=max_episode_steps,
+            use_aligned_reward=use_aligned_reward,
+            progress_coef=progress_coef,
+            success_bonus=success_bonus,
+            fail_penalty=fail_penalty,
+            step_penalty=step_penalty,
         )
         vec = VecFrameStack(vec, n_stack=frame_stack, channels_order="last")
         return vec
 
     if env_name.lower() == "both":
         from .mixed_env import make_mixed_vec_env
-        return make_mixed_vec_env(n_envs=n_envs, frame_stack=frame_stack)
+        return make_mixed_vec_env(
+            n_envs=n_envs,
+            frame_stack=frame_stack,
+            mario_ratio=mario_ratio,
+            coinrun_reward_scale=coinrun_reward_scale,
+            coinrun_progress_coef=coinrun_progress_coef,
+            coinrun_success_bonus=coinrun_success_bonus,
+            coinrun_fail_penalty=coinrun_fail_penalty,
+            coinrun_step_penalty=coinrun_step_penalty,
+            use_aligned_reward=use_aligned_reward,
+            progress_coef=progress_coef,
+            success_bonus=success_bonus,
+            fail_penalty=fail_penalty,
+            step_penalty=step_penalty,
+            fixed_level=fixed_level,
+            start_level=start_level,
+            distribution_mode=distribution_mode,
+            max_episode_steps=max_episode_steps,
+        )
 
     raise ValueError(f"未知环境: {env_name}")
 

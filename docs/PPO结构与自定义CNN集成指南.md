@@ -35,17 +35,19 @@ PPO 使用 **Clipped Surrogate Objective**：
 
 其中 \( L^{VF} \) 为价值函数损失，\( H \) 为熵正则项。
 
-### 1.3 PPO 在 SB3 中的主要超参数
+### 1.3 PPO 在 SB3 中的主要超参数（本仓库当前默认）
 
 | 参数 | 含义 | 典型值 |
 |------|------|--------|
 | `n_steps` | 每次更新前收集的步数 | 2048 |
-| `batch_size` | 小批量大小 | 64 |
-| `n_epochs` | 每轮更新迭代次数 | 10 |
-| `gamma` | 折扣因子 | 0.99 |
+| `batch_size` | 小批量大小 | 8192（通用入口默认） |
+| `n_epochs` | 每轮更新迭代次数 | 5（通用入口默认） |
+| `gamma` | 折扣因子 | 0.95（通用入口默认） |
 | `gae_lambda` | GAE 参数 | 0.95 |
 | `clip_range` | 策略裁剪范围 | 0.2 |
-| `ent_coef` | 熵系数 | 0.01 |
+| `ent_coef` | 熵系数 | 0.1 |
+
+> 说明：`train_ppo_mario.py` / `train_ppo_coinrun.py` 会在通用入口参数基础上覆盖默认值（例如 batch_size、n_epochs）。
 
 ---
 
@@ -152,7 +154,7 @@ nn.Flatten() → nn.Linear(n_flatten, features_dim)
 
 ### 5.1 思路概述
 
-将你在 **模仿学习** 中训练的 CNN（当前以 `train/train_cnn_imitation_unified.py` 为主）作为 PPO 的**特征提取器**，替代默认的 NatureCNN。
+将你在 **模仿学习** 中训练的 CNN（当前以 `train_model/train_cnn_imitation_unified.py` 为主）作为 PPO 的**特征提取器**，替代默认的 NatureCNN。
 
 - **模仿学习 CNN（当前实现）**：输入 4×84×84（4 帧堆叠）→ 输出 15 类 logits
 - **PPO 特征提取器（当前实现）**：输入 4×84×84（或 84×84×4）→ 输出 `features_dim` 维特征向量
@@ -256,8 +258,8 @@ model.learn(total_timesteps=1e7, callback=eval_callback)
 
 若希望用模仿学习预训练权重初始化 PPO 特征提取器（当前实现）：
 
-1. `train/train_cnn_imitation_unified.py` 已直接按 4 通道输入训练 backbone。
-2. 保存 `backbone_state_dict`（不含分类头），并在 `train/train_ppo_model.py` 中通过 `--pretrain-path` 加载，`strict=False`。
+1. `train_model/train_cnn_imitation_unified.py` 已直接按 4 通道输入训练 backbone。
+2. 保存 `backbone_state_dict`（不含分类头），并在 `train_model/train_ppo_model.py` 中通过 `--pretrain-path` 加载，`strict=False`。
 
 ---
 
@@ -266,16 +268,18 @@ model.learn(total_timesteps=1e7, callback=eval_callback)
 ### 6.1 环境构建（当前实现）
 
 ```python
-# envs/unified_env.py + envs/mario_env.py + envs/jumper_env.py
-# Mario/Jumper 统一预处理为 84x84 灰度，并在训练时统一做 VecFrameStack(4)
+# envs/unified_env.py + envs/mario_env.py + envs/coinrun_env.py
+# 当前主线以 Mario/CoinRun 为主，统一预处理为 84x84 灰度，并在训练时统一做 VecFrameStack(4)
 ```
 
 ### 6.2 向量化训练（当前实现）
 
 ```python
-# train/train_ppo_model.py
-# 支持 --env mario/jumper/both、--pretrain-path
-# policy_kwargs 中注入 CustomCNN(features_dim=512)
+# train_model/train_ppo_model.py
+# 支持 --env mario/jumper/coinrun/both、--pretrain-path、--resume
+# 训练/评估都使用 VecMonitor + VecTransposeImage 保持观测布局一致
+# policy_kwargs 注入 CustomCNN(features_dim=512)
+# CallbackList(EvalCallback + MetricsEvalCallback) 记录最优模型与扩展指标
 ```
 
 ### 6.3 推理
@@ -297,15 +301,15 @@ python playing/record_jumper_unified.py --no-fixed-level --distribution-mode exp
 ```
 
 ```bash
-# PPO 训练（同一 exploration 单关卡）
-python train/train_ppo_model.py --env jumper --no-fixed-level --distribution-mode exploration --total-timesteps 5000000 --exp-id jumper_exploration_v1
+# PPO 训练（Jumper 对照实验，同一 exploration 单关卡）
+python train_model/train_ppo_model.py --env jumper --no-fixed-level --distribution-mode exploration --total-timesteps 5000000 --exp-id jumper_exploration_v1
 ```
 
 ---
 
-### 6.5 CoinRun 作为更简化的 Procgen 第二环境
+### 6.5 CoinRun 作为当前主线第二环境
 
-如果你想保留“跨游戏”实验设置，但希望第二个环境比 `jumper` 更简单、且更接近 Mario 的横版向右平台跳跃结构，可以新增 `coinrun` 作为替代环境。
+当前毕业设计主线建议使用 `coinrun` 作为第二环境：它比 `jumper` 更简单，也更接近 Mario 的横版向右平台跳跃结构。
 
 当前仓库已提供独立入口，接口与 `jumper` 基本一致：
 
@@ -323,7 +327,7 @@ python train_model/train_ppo_coinrun.py --n-envs 10 --total-timesteps 5000000 --
 
 - 继续复用 Procgen 的 15 动作空间，不额外重写统一动作映射；
 - 继续复用 `84x84` 灰度、跳帧与 4 帧堆叠预处理；
-- 不替换现有 `jumper`，而是并行保留，便于后续做对照实验。
+- `jumper` 不删除，作为兼容入口和后续对照实验环境保留。
 
 ---
 

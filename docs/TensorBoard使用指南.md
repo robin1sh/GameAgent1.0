@@ -1,6 +1,6 @@
 # TensorBoard 使用指南：从登录服务器到查看训练曲线
 
-> 适用环境：Mario / Jumper PPO 训练，在远程 GPU 服务器上运行，本地浏览器查看。
+> 适用环境：Mario / CoinRun PPO 训练，在远程 GPU 服务器上运行，本地浏览器查看。
 
 ---
 
@@ -32,6 +32,12 @@ python -m tensorboard.main --logdir .\logs\mario --port 6006
 
 ```powershell
 python -m tensorboard.main --logdir .\logs\mario\local_gpu_fast --port 6006
+```
+
+查看 unified 一次实验（`train_unified.py`）：
+
+```powershell
+python -m tensorboard.main --logdir .\logs\unified_expert_both_v4 --port 6006
 ```
 
 ### 3. 浏览器打开
@@ -72,7 +78,9 @@ python -m tensorboard.main --version
 dir .\logs\mario\local_gpu_fast
 ```
 
-> 说明：本项目默认 TensorBoard 日志根目录是 `.\logs\`，Mario 默认写到 `.\logs\mario\`，Jumper 默认写到 `.\logs\jumper\`。
+> 说明：本项目默认 TensorBoard 日志根目录是 `.\logs\`。  
+> - 单任务入口通常写到 `.\logs\mario\` / `.\logs\coinrun\`  
+> - `train_unified.py` 写到 `.\logs\{exp-id}\`
 
 ---
 
@@ -124,16 +132,16 @@ python3 train_model/train_ppo_mario.py \
 # 训练启动后，按 Ctrl+A 再按 D 分离会话（训练保持后台运行）
 ```
 
-### 训练 Jumper
+### 训练 CoinRun
 
 ```bash
 # 新建另一个会话（可与 Mario 同时运行）
-screen -S jumper_train
+screen -S coinrun_train
 
-python3 train_model/train_ppo_jumper.py \
+python3 train_model/train_ppo_coinrun.py \
     --total-timesteps 10000000 \
     --n-envs 10 \
-    --exp-id jumper_v1
+    --exp-id coinrun_v1
 
 # 按 Ctrl+A 再按 D 分离
 ```
@@ -142,7 +150,7 @@ python3 train_model/train_ppo_jumper.py \
 
 ```bash
 screen -r mario_train    # 重连 Mario 会话
-screen -r jumper_train   # 重连 Jumper 会话
+screen -r coinrun_train  # 重连 CoinRun 会话
 screen -ls               # 列出所有会话
 ```
 
@@ -162,13 +170,13 @@ screen -S tensorboard
 # 进入项目目录
 cd /ai/MarioRL
 
-# 启动 TensorBoard，同时监控 Mario 和 Jumper 日志
+# 启动 TensorBoard，同时监控 Mario 和 CoinRun 日志
 tensorboard --logdir ./logs/ --host 0.0.0.0 --port 6006
 
 # 按 Ctrl+A 再按 D 分离，TensorBoard 保持后台运行
 ```
 
-> `--host 0.0.0.0` 允许外部通过端口转发访问；`--logdir ./logs/` 会自动识别 `mario/` 和 `jumper/` 两个子目录并分组显示。
+> `--host 0.0.0.0` 允许外部通过端口转发访问；`--logdir ./logs/` 会自动识别 `mario/` 和 `coinrun/` 两个子目录并分组显示。
 
 ---
 
@@ -205,16 +213,22 @@ http://localhost:6006
 | 指标 | 含义 | 健康表现 |
 |------|------|----------|
 | `rollout/ep_rew_mean` | **平均回合回报**，最核心的指标 | 随训练步数持续上升 |
-| `rollout/ep_len_mean` | 平均回合长度（步数） | Mario：越长说明存活/前进更远；Jumper：趋于稳定后上升 |
+| `rollout/ep_len_mean` | 平均回合长度（步数） | Mario：越长说明存活/前进更远；CoinRun：趋于稳定后上升 |
+| `rollout/mean_reward` | 自定义回调统计的近期平均回报 | 与 `ep_rew_mean` 趋势一致即可 |
+| `rollout/complete_rate` | 自定义回调统计的通关率 | 上升且趋稳 |
+| `rollout/mario_mean_reward` | mixed 训练下 Mario 子任务平均回报 | 逐步上升 |
+| `rollout/coinrun_mean_reward` | mixed 训练下 CoinRun 子任务平均回报 | 逐步上升 |
+| `rollout/mario_complete_rate` | mixed 训练下 Mario 子任务通关率 | 上升且波动收敛 |
+| `rollout/coinrun_complete_rate` | mixed 训练下 CoinRun 子任务通关率 | 上升且波动收敛 |
 | `train/approx_kl` | 每次更新策略的变化幅度 | 保持在 `0.01` 附近，过大（>0.05）说明更新过激 |
 | `train/clip_fraction` | PPO clip 触发比例 | 保持在 `0.1~0.3`，过高说明策略跳变 |
 | `train/entropy_loss` | 策略熵（负值），反映探索程度 | 训练早期绝对值较大，后期逐渐减小属正常 |
 | `train/value_loss` | 价值函数拟合误差 | 应持续下降并趋于平稳 |
 | `train/loss` | 总损失 | 参考用，趋势比绝对值更重要 |
 
-### 5.3 对比 Mario 与 Jumper
+### 5.3 对比 Mario 与 CoinRun
 
-TensorBoard 会以 `mario/mario_v1` 和 `jumper/jumper_v1` 为分组，自动用不同颜色区分。
+TensorBoard 会以 `mario/mario_v1` 和 `coinrun/coinrun_v1` 为分组，自动用不同颜色区分。
 
 左侧 **Runs** 面板可勾选/取消某条曲线，便于单独查看或两者叠加对比。
 
@@ -258,9 +272,9 @@ cd /ai/MarioRL
 python3 train_model/train_ppo_mario.py --exp-id mario_v1 --total-timesteps 10000000
 # Ctrl+A D 分离
 
-# ③ 服务器：启动 Jumper 训练
-screen -S jumper_train
-python3 train_model/train_ppo_jumper.py --exp-id jumper_v1 --total-timesteps 10000000
+# ③ 服务器：启动 CoinRun 训练
+screen -S coinrun_train
+python3 train_model/train_ppo_coinrun.py --exp-id coinrun_v1 --total-timesteps 10000000
 # Ctrl+A D 分离
 
 # ④ 服务器：启动 TensorBoard

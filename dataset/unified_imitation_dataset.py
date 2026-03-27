@@ -1,5 +1,5 @@
 """
-统一模仿学习数据集：支持 mario、jumper、rl_expert_mario、rl_expert_jumper。
+统一模仿学习数据集：支持 mario、coinrun、rl_expert_mario、rl_expert_coinrun。
 每样本：4 张 PNG 堆叠为 (84, 84, 4)，label.txt 为 0–14。
 """
 import os
@@ -10,8 +10,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-# 支持的数据源
-DATA_SOURCES = ["mario", "jumper", "rl_expert_mario", "rl_expert_jumper"]
+# 支持的数据源（当前主线）
+DATA_SOURCES = ["mario", "coinrun", "rl_expert_mario", "rl_expert_coinrun"]
 
 
 class UnifiedImitationDataset(Dataset):
@@ -28,7 +28,7 @@ class UnifiedImitationDataset(Dataset):
     ):
         """
         :param root: 根目录，如 data_imitation_unified/
-        :param include_sources: 包含的数据源，如 ["mario", "jumper", "rl_expert_mario", "rl_expert_jumper"]
+        :param include_sources: 包含的数据源，如 ["mario", "coinrun", "rl_expert_mario", "rl_expert_coinrun"]
         :param transform: 可选，对堆叠后的 obs 做变换
         """
         self.root = Path(root)

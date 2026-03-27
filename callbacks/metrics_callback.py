@@ -17,6 +17,11 @@ class MetricsEvalCallback(BaseCallback):
         self.episode_rewards = []
         self.episode_lengths = []
         self.episode_completes = []
+        self.episode_truncated = []
+        self.per_game = {
+            "mario": {"rewards": [], "lengths": [], "completes": [], "truncated": []},
+            "coinrun": {"rewards": [], "lengths": [], "completes": [], "truncated": []},
+        }
 
     def _on_step(self) -> bool:
         infos = self.locals.get("infos", [])
@@ -32,7 +37,18 @@ class MetricsEvalCallback(BaseCallback):
                     or info.get("prev_level_complete", False)
                     or info.get("carrot_get", False)
                 )
+                truncated = bool(
+                    info.get("time_limit_truncated", False)
+                    or info.get("TimeLimit.truncated", False)
+                )
                 self.episode_completes.append(float(complete))
+                self.episode_truncated.append(float(truncated))
+                game = info.get("game")
+                if game in self.per_game:
+                    self.per_game[game]["rewards"].append(ep.get("r", 0))
+                    self.per_game[game]["lengths"].append(ep.get("l", 0))
+                    self.per_game[game]["completes"].append(float(complete))
+                    self.per_game[game]["truncated"].append(float(truncated))
         return True
 
     def _on_rollout_end(self) -> None:
@@ -41,10 +57,25 @@ class MetricsEvalCallback(BaseCallback):
             mean_reward = np.mean(self.episode_rewards[-n:])
             mean_length = np.mean(self.episode_lengths[-n:])
             complete_rate = np.mean(self.episode_completes[-n:]) if self.episode_completes else 0.0
+            truncated_rate = np.mean(self.episode_truncated[-n:]) if self.episode_truncated else 0.0
             if self.verbose:
-                print(f"  mean_reward={mean_reward:.1f} complete_rate={complete_rate:.2%} mean_steps={mean_length:.0f}")
+                print(
+                    f"  mean_reward={mean_reward:.1f} complete_rate={complete_rate:.2%} "
+                    f"truncated_rate={truncated_rate:.2%} mean_steps={mean_length:.0f}"
+                )
             if self.logger:
                 self.logger.record("rollout/mean_reward", mean_reward)
                 self.logger.record("rollout/complete_rate", complete_rate)
+                self.logger.record("rollout/truncated_rate", truncated_rate)
                 self.logger.record("rollout/mean_episode_length", mean_length)
+                for game, bucket in self.per_game.items():
+                    if bucket["rewards"]:
+                        n_game = min(100, len(bucket["rewards"]))
+                        self.logger.record(f"rollout/{game}_mean_reward", np.mean(bucket["rewards"][-n_game:]))
+                        self.logger.record(f"rollout/{game}_complete_rate", np.mean(bucket["completes"][-n_game:]))
+                        self.logger.record(f"rollout/{game}_truncated_rate", np.mean(bucket["truncated"][-n_game:]))
+                        self.logger.record(
+                            f"rollout/{game}_mean_episode_length",
+                            np.mean(bucket["lengths"][-n_game:]),
+                        )
         return None

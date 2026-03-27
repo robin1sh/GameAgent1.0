@@ -5,6 +5,7 @@
 import argparse
 import os
 import sys
+from collections import Counter
 
 import numpy as np
 import pygame
@@ -35,6 +36,8 @@ def parse_args():
         help="SB3 模型路径",
     )
     parser.add_argument("--steps", type=int, default=10000, help="总步数")
+    parser.add_argument("--stats-steps", type=int, default=1000, help="统计前 N 步动作分布")
+    parser.add_argument("--stats-only", action="store_true", help="仅统计动作分布，不显示画面")
     parser.add_argument("--deterministic", action="store_true", help="确定性动作")
     parser.add_argument("--render", action="store_true", help="是否显示 pygame 画面")
     parser.add_argument("--render-scale", type=int, default=6, help="画面放大倍数")
@@ -91,16 +94,20 @@ def main():
         obs = obs[0]
 
     running = True
+    action_counter = Counter()
     for _ in range(args.steps):
         if not running:
             break
 
         action, _ = model.predict(obs, deterministic=args.deterministic)
+        if sum(action_counter.values()) < max(0, args.stats_steps):
+            act = int(np.asarray(action).item())
+            action_counter[act] += 1
         obs, _, dones, infos = vec_env.step(action)
         if isinstance(obs, tuple):
             obs = obs[0]
 
-        if args.render and screen is not None:
+        if args.render and not args.stats_only and screen is not None:
             rgb = infos[0].get("rgb") if infos and isinstance(infos[0], dict) else None
             if rgb is not None:
                 frame = np.transpose(rgb, (1, 0, 2))
@@ -125,6 +132,14 @@ def main():
     vec_env.close()
     if screen is not None:
         pygame.quit()
+
+    total = sum(action_counter.values())
+    if total > 0:
+        print(f"前 {total} 步动作分布：")
+        for act_id in range(15):
+            count = action_counter[act_id]
+            pct = count / total * 100
+            print(f"动作 {act_id}: {count} 次 ({pct:.2f}%)")
 
 
 if __name__ == "__main__":

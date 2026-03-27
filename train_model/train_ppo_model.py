@@ -16,7 +16,7 @@ import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CallbackList, EvalCallback
 from stable_baselines3.common.utils import get_schedule_fn
-from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage
+from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage, VecNormalize
 
 from envs import make_vec_env
 from CNN_TEMPLATE import CustomCNN
@@ -84,6 +84,23 @@ def parse_args():
         help="评估间隔（按环境总步数计，内部会自动按 n_envs 折算为回调步数）",
     )
     parser.add_argument("--n-eval-episodes", type=int, default=5, help="每次评估的回合数")
+    parser.add_argument(
+        "--normalize-reward",
+        action="store_true",
+        default=False,
+        help="启用 VecNormalize 奖励归一化",
+    )
+    parser.add_argument("--clip-reward", type=float, default=10.0, help="VecNormalize 奖励裁剪阈值")
+    parser.add_argument(
+        "--use-aligned-reward",
+        action="store_true",
+        default=False,
+        help="启用统一奖励语义（推荐用于 CoinRun 专家与混合训练对齐）",
+    )
+    parser.add_argument("--progress-coef", type=float, default=0.02, help="统一奖励中的进度项系数")
+    parser.add_argument("--success-bonus", type=float, default=100.0, help="统一奖励中的通关奖励")
+    parser.add_argument("--fail-penalty", type=float, default=20.0, help="统一奖励中的失败惩罚")
+    parser.add_argument("--step-penalty", type=float, default=0.002, help="统一奖励中的每步时间惩罚")
     return parser.parse_args()
 
 
@@ -105,6 +122,11 @@ def main():
         fixed_level=args.fixed_level,
         start_level=args.start_level,
         distribution_mode=args.distribution_mode,
+        use_aligned_reward=args.use_aligned_reward,
+        progress_coef=args.progress_coef,
+        success_bonus=args.success_bonus,
+        fail_penalty=args.fail_penalty,
+        step_penalty=args.step_penalty,
     )
     # 评估环境与训练环境分离，避免状态与统计相互污染
     eval_env = make_vec_env(
@@ -115,10 +137,24 @@ def main():
         fixed_level=args.fixed_level,
         start_level=args.start_level,
         distribution_mode=args.distribution_mode,
+        use_aligned_reward=args.use_aligned_reward,
+        progress_coef=args.progress_coef,
+        success_bonus=args.success_bonus,
+        fail_penalty=args.fail_penalty,
+        step_penalty=args.step_penalty,
     )
     # 保证 train/eval 观测布局与统计封装一致，避免类型不一致与 Monitor 警告
     vec_env = VecMonitor(VecTransposeImage(vec_env))
     eval_env = VecMonitor(VecTransposeImage(eval_env))
+    if args.normalize_reward:
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=False,
+            norm_reward=True,
+            clip_reward=args.clip_reward,
+            gamma=args.gamma,
+            training=True,
+        )
 
     log_dir = args.log_path
     if args.exp_id:
@@ -206,6 +242,10 @@ def main():
     final_model_path = os.path.join(save_path, f"ppo_{args.env}_final")
     model.save(final_model_path)
     print(f"最终模型已保存: {final_model_path}.zip")
+    if args.normalize_reward:
+        vecnorm_path = os.path.join(save_path, "vecnormalize.pkl")
+        vec_env.save(vecnorm_path)
+        print(f"VecNormalize 统计已保存: {vecnorm_path}")
     vec_env.close()
     eval_env.close()
 
