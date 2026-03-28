@@ -1,6 +1,6 @@
-# Stable-Baselines3 PPO 结构说明与自定义 CNN 集成指南
+# Stable-Baselines3 PPO 结构说明与当前工程训练流程
 
-> 面向毕业设计：马里奥强化学习项目中的 PPO 算法架构及自研 CNN 特征提取器集成方案
+> 面向毕业设计：MarioRL 项目中的 PPO 算法架构、CustomCNN 接入方式，以及当前 `single PPO -> fuse -> unified -> resume` 工程主线
 
 ---
 
@@ -156,6 +156,18 @@ nn.Flatten() → nn.Linear(n_flatten, features_dim)
 
 将你在 **模仿学习** 中训练的 CNN（当前以 `train_model/train_cnn_imitation_unified.py` 为主）作为 PPO 的**特征提取器**，替代默认的 NatureCNN。
 
+但需要注意：在**当前工程主线**里，imitation 更像是一个可选 warm start，而不是唯一主入口。你现在最常用的真实链路是：
+
+```text
+Mario 单任务 PPO + CoinRun 单任务 PPO
+                    ↓
+               fuse_ppo_models.py
+                    ↓
+           train_unified.py --mode mixed
+                    ↓
+                --resume 长时续训
+```
+
 - **模仿学习 CNN（当前实现）**：输入 4×84×84（4 帧堆叠）→ 输出 15 类 logits
 - **PPO 特征提取器（当前实现）**：输入 4×84×84（或 84×84×4）→ 输出 `features_dim` 维特征向量
 
@@ -254,7 +266,7 @@ model = PPO(
 model.learn(total_timesteps=1e7, callback=eval_callback)
 ```
 
-### 5.5 预训练权重迁移（可选）
+### 5.5 预训练权重迁移（可选 warm start）
 
 若希望用模仿学习预训练权重初始化 PPO 特征提取器（当前实现）：
 
@@ -272,7 +284,7 @@ model.learn(total_timesteps=1e7, callback=eval_callback)
 # 当前主线以 Mario/CoinRun 为主，统一预处理为 84x84 灰度，并在训练时统一做 VecFrameStack(4)
 ```
 
-### 6.2 向量化训练（当前实现）
+### 6.2 单任务 PPO（当前实现）
 
 ```python
 # train_model/train_ppo_model.py
@@ -282,7 +294,46 @@ model.learn(total_timesteps=1e7, callback=eval_callback)
 # CallbackList(EvalCallback + MetricsEvalCallback) 记录最优模型与扩展指标
 ```
 
-### 6.3 推理
+单任务 PPO 在当前工程里的作用：
+
+- 给 Mario 和 CoinRun 各自提供可靠基线
+- 作为 `fuse_ppo_models.py` 的输入模型
+- 作为 unified 训练失败时的回退参考
+
+### 6.3 PPO 融合（当前实现）
+
+```python
+# tools/fuse_ppo_models.py
+# 读取两个 PPO policy.state_dict()
+# 按 alpha 线性融合浮点参数
+# 在 Mario / CoinRun 上分别评估
+# 选择综合分最优的 alpha
+```
+
+当前作用：
+
+- 用两个单任务策略构造 unified 初始化
+- 比随机初始化或纯单任务初始化更贴近当前最终目标
+- 可以减少 unified mixed 训练早期的偏科问题
+
+### 6.4 unified mixed 训练（当前实现）
+
+```python
+# train_model/train_unified.py
+# mode=mixed 时调用 make_vec_env("both")
+# mario_ratio 控制 Mario 采样占比
+# coinrun_* 参数控制 CoinRun 奖励塑形
+# resume 支持从已有 PPO checkpoint 继续训练
+# PrefixedEvalCallback 分别记录 Mario / CoinRun 评估
+```
+
+当前你最需要理解的点：
+
+- `mixed` 是当前主线，`alternating` 更适合作为对照
+- 训练目标不再只是“总 reward 高”，而是 Mario / CoinRun 两边都不能崩
+- `resume` 续训时，最好保持并行数、环境口径、奖励塑形口径一致
+
+### 6.5 推理
 
 ```python
 # test/test_model.py
@@ -290,7 +341,7 @@ model = PPO.load("best_model/best_model.zip", env=env)
 action, _ = model.predict(obs, deterministic=True)
 ```
 
-### 6.4 Jumper 的 exploration 固定单关卡用法（当前实现）
+### 6.6 Jumper 的 exploration 固定单关卡用法（兼容保留）
 
 - `distribution_mode=exploration` 时，Procgen 会内部强制固定为单关卡种子。
 - 因此命令应使用 `--no-fixed-level --distribution-mode exploration`，不要再手动传 `--start-level`。
@@ -307,7 +358,7 @@ python train_model/train_ppo_model.py --env jumper --no-fixed-level --distributi
 
 ---
 
-### 6.5 CoinRun 作为当前主线第二环境
+### 6.7 CoinRun 作为当前主线第二环境
 
 当前毕业设计主线建议使用 `coinrun` 作为第二环境：它比 `jumper` 更简单，也更接近 Mario 的横版向右平台跳跃结构。
 
@@ -328,6 +379,22 @@ python train_model/train_ppo_coinrun.py --n-envs 10 --total-timesteps 5000000 --
 - 继续复用 Procgen 的 15 动作空间，不额外重写统一动作映射；
 - 继续复用 `84x84` 灰度、跳帧与 4 帧堆叠预处理；
 - `jumper` 不删除，作为兼容入口和后续对照实验环境保留。
+
+### 6.8 当前建议怎么理解 imitation / fuse / resume 的关系
+
+可以把三者理解成三个不同层级的初始化方式：
+
+1. `imitation backbone`
+作用：给 CNN 特征提取器一个离线先验  
+适合：做 warm start 对照实验
+
+2. `fused PPO`
+作用：把两个单任务策略直接融合成 unified 初始策略  
+适合：当前工程主线
+
+3. `resume unified checkpoint`
+作用：在已有 unified 结果上继续长训  
+适合：当前日常实验迭代
 
 ---
 

@@ -1,6 +1,6 @@
-# TensorBoard 使用指南：从登录服务器到查看训练曲线
+# TensorBoard 使用指南：围绕当前 unified 主线看曲线
 
-> 适用环境：Mario / CoinRun PPO 训练，在远程 GPU 服务器上运行，本地浏览器查看。
+> 适用场景：Mario 单任务、CoinRun 单任务、fused 后 unified mixed 训练、`--resume` 长时续训。
 
 ---
 
@@ -37,7 +37,7 @@ python -m tensorboard.main --logdir .\logs\mario\local_gpu_fast --port 6006
 查看 unified 一次实验（`train_unified.py`）：
 
 ```powershell
-python -m tensorboard.main --logdir .\logs\unified_expert_both_v4 --port 6006
+python -m tensorboard.main --logdir .\logs\unified_from_fused_v2 --port 6006
 ```
 
 ### 3. 浏览器打开
@@ -80,7 +80,8 @@ dir .\logs\mario\local_gpu_fast
 
 > 说明：本项目默认 TensorBoard 日志根目录是 `.\logs\`。  
 > - 单任务入口通常写到 `.\logs\mario\` / `.\logs\coinrun\`  
-> - `train_unified.py` 写到 `.\logs\{exp-id}\`
+> - `train_unified.py` 写到 `.\logs\{exp-id}\`  
+> - 当前最需要重点关注的是 unified 实验目录，而不是单看单任务目录
 
 ---
 
@@ -208,29 +209,57 @@ http://localhost:6006
 
 进入后默认显示 **SCALARS** 标签页，左侧可过滤指标名称。
 
-### 5.2 关键指标说明
+### 5.2 当前最重要的指标
 
-| 指标 | 含义 | 健康表现 |
-|------|------|----------|
-| `rollout/ep_rew_mean` | **平均回合回报**，最核心的指标 | 随训练步数持续上升 |
-| `rollout/ep_len_mean` | 平均回合长度（步数） | Mario：越长说明存活/前进更远；CoinRun：趋于稳定后上升 |
-| `rollout/mean_reward` | 自定义回调统计的近期平均回报 | 与 `ep_rew_mean` 趋势一致即可 |
-| `rollout/complete_rate` | 自定义回调统计的通关率 | 上升且趋稳 |
-| `rollout/mario_mean_reward` | mixed 训练下 Mario 子任务平均回报 | 逐步上升 |
-| `rollout/coinrun_mean_reward` | mixed 训练下 CoinRun 子任务平均回报 | 逐步上升 |
-| `rollout/mario_complete_rate` | mixed 训练下 Mario 子任务通关率 | 上升且波动收敛 |
-| `rollout/coinrun_complete_rate` | mixed 训练下 CoinRun 子任务通关率 | 上升且波动收敛 |
-| `train/approx_kl` | 每次更新策略的变化幅度 | 保持在 `0.01` 附近，过大（>0.05）说明更新过激 |
-| `train/clip_fraction` | PPO clip 触发比例 | 保持在 `0.1~0.3`，过高说明策略跳变 |
-| `train/entropy_loss` | 策略熵（负值），反映探索程度 | 训练早期绝对值较大，后期逐渐减小属正常 |
-| `train/value_loss` | 价值函数拟合误差 | 应持续下降并趋于平稳 |
-| `train/loss` | 总损失 | 参考用，趋势比绝对值更重要 |
+| 指标 | 含义 | 当前怎么用 |
+|------|------|-------------|
+| `rollout/mario_mean_reward` | mixed 训练下 Mario 子任务平均回报 | 判断 Mario 是否被 unified 训练保住 |
+| `rollout/coinrun_mean_reward` | mixed 训练下 CoinRun 子任务平均回报 | 判断 CoinRun 是否被忽视或崩掉 |
+| `rollout/mario_complete_rate` | Mario 子任务通关率 | 看是否真正学到完成关卡，而非只拿局部奖励 |
+| `rollout/coinrun_complete_rate` | CoinRun 子任务通关率 | 看 CoinRun 是否只会拿塑形分，不会完成任务 |
+| `eval_mario/*` | Mario 独立评估回调输出 | 比 rollout 更适合做版本间横向比较 |
+| `eval_coinrun/*` | CoinRun 独立评估回调输出 | 检查 mixed 训练是否真的提升 CoinRun 泛化 |
+| `train/approx_kl` | 每次更新策略的变化幅度 | 过大说明 resume 后更新过猛 |
+| `train/clip_fraction` | PPO clip 触发比例 | 过高时通常意味着策略跳变太大 |
+| `train/value_loss` | 价值函数拟合误差 | 长时间居高不下时，说明奖励尺度可能不稳 |
+| `train/entropy_loss` | 策略探索强度 | 下降过快可能导致早熟策略 |
 
-### 5.3 对比 Mario 与 CoinRun
+### 5.3 当前最常见的读图判断
 
-TensorBoard 会以 `mario/mario_v1` 和 `coinrun/coinrun_v1` 为分组，自动用不同颜色区分。
+1. `mario_mean_reward` 上升，但 `coinrun_mean_reward` 长期不动  
+说明 Mario 占比过高，或者 CoinRun 奖励塑形太弱。
+
+2. `coinrun_mean_reward` 上升，但 `mario_complete_rate` 下滑  
+说明 CoinRun 奖励过强，或者 `mario_ratio` 太低。
+
+3. 两边 reward 都有波动，但 `eval_*` 长期不涨  
+说明策略只是在适应训练分布，泛化没有真正变好。
+
+4. resume 之后曲线突然剧烈抖动  
+优先检查这次续训是否改动了奖励参数、并行环境数、归一化开关。
+
+### 5.4 对比 Mario 与 CoinRun
+
+单任务训练时，TensorBoard 会以 `mario/mario_v1` 和 `coinrun/coinrun_v1` 为分组，自动用不同颜色区分。
 
 左侧 **Runs** 面板可勾选/取消某条曲线，便于单独查看或两者叠加对比。
+
+对于 unified 训练，更推荐这样对比：
+
+- 比较 `unified_from_fused_v1` 与 `unified_from_fused_v2`
+- 看 `eval_mario/*` 与 `eval_coinrun/*` 是否同步变好
+- 不要只看总 reward，必须同时看两边子任务指标
+
+### 5.5 当前推荐的对比对象
+
+建议至少保留这几组实验在 TensorBoard 中横向比：
+
+- `mario_baseline_*`
+- `coinrun_baseline_*`
+- `fused_*`
+- `unified_from_fused_v1`
+- `unified_from_fused_v2`
+- `unified_pretrain_*`（如果你做 imitation warm start 对照）
 
 ---
 
@@ -275,6 +304,11 @@ python3 train_model/train_ppo_mario.py --exp-id mario_v1 --total-timesteps 10000
 # ③ 服务器：启动 CoinRun 训练
 screen -S coinrun_train
 python3 train_model/train_ppo_coinrun.py --exp-id coinrun_v1 --total-timesteps 10000000
+# Ctrl+A D 分离
+
+# ③.5 服务器：启动 unified mixed 训练
+screen -S unified_train
+python3 train_model/train_unified.py --mode mixed --resume best_model/unified_from_fused_v1/final_model.zip --exp-id unified_from_fused_v2 --n-envs 10 --mario-ratio 0.6 --total-timesteps 10000000 --fixed-level --start-level 0 --distribution-mode easy --coinrun-progress-coef 0.05 --coinrun-success-bonus 10.0 --coinrun-fail-penalty 2.0 --coinrun-step-penalty 0.002
 # Ctrl+A D 分离
 
 # ④ 服务器：启动 TensorBoard

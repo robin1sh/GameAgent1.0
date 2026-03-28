@@ -40,6 +40,24 @@ def parse_args():
     parser.add_argument("--pretrain-path", default="", help="模仿学习 backbone 路径，用于初始化")
     parser.add_argument("--resume", default="", help="从已有 PPO .zip 恢复并继续训练")
     parser.add_argument(
+        "--learning-rate",
+        type=float,
+        default=3e-4,
+        help="PPO 学习率初值（配合 --learning-rate-schedule 使用）",
+    )
+    parser.add_argument(
+        "--learning-rate-schedule",
+        choices=["constant", "linear"],
+        default="constant",
+        help="学习率调度：constant=常数，linear=线性衰减到 0",
+    )
+    parser.add_argument(
+        "--ent-coef",
+        type=float,
+        default=0.1,
+        help="PPO 熵系数，适度降低可减弱后期过度探索",
+    )
+    parser.add_argument(
         "--dual-head",
         action="store_true",
         default=False,
@@ -113,6 +131,12 @@ def parse_args():
 def main():
     args = parse_args()
     eval_freq_steps = max(100000 // args.n_envs, 1)
+
+    # SB3 约定 progress_remaining 从 1 线性衰减到 0。
+    if args.learning_rate_schedule == "linear":
+        learning_rate = lambda progress_remaining: float(progress_remaining) * args.learning_rate
+    else:
+        learning_rate = args.learning_rate
 
     if args.mode == "mixed":
         vec_env = make_vec_env(
@@ -248,9 +272,10 @@ def main():
         model.n_steps = 2048
         model.batch_size = 2048
         model.n_epochs = 10
-        model.ent_coef = 0.1
+        model.ent_coef = args.ent_coef
         model.gamma = 0.95
-        model.learning_rate = 3e-4
+        model.learning_rate = learning_rate
+        model._setup_lr_schedule()
         model.tensorboard_log = log_dir
         print(f"已从 checkpoint 恢复并继续训练: {args.resume}")
     else:
@@ -258,11 +283,11 @@ def main():
             policy=policy_class,
             env=vec_env,
             policy_kwargs=policy_kwargs,
-            learning_rate=3e-4,
+            learning_rate=learning_rate,
             n_steps=2048,
             batch_size=2048,
             n_epochs=10,
-            ent_coef=0.1,
+            ent_coef=args.ent_coef,
             gamma=0.95,
             verbose=1,
             tensorboard_log=log_dir,
