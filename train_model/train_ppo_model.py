@@ -29,9 +29,9 @@ def build_linear_schedule(initial_value: float, final_value: float):
         return final_value + (initial_value - final_value) * progress_remaining
 
     return schedule
+#schedule(progress_remaining)：SB3 会传入“剩余训练进度”。
 
-
-def parse_args():
+def parse_args():#参数处理函数
     parser = argparse.ArgumentParser(description="PPO 训练：Mario / Jumper / CoinRun / 联合")
     parser.add_argument("--env", default="mario", choices=["mario", "jumper", "coinrun", "both"],
                         help="训练环境")
@@ -107,14 +107,14 @@ def parse_args():
 def main():
     args = parse_args()
     if not args.exp_id:
-        args.exp_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.exp_id = datetime.now().strftime("%Y%m%d_%H%M%S")#实验命名规则：年月日_时分秒
 
     if args.lr_schedule == "linear":
-        learning_rate = build_linear_schedule(args.learning_rate, args.final_learning_rate)
+        learning_rate = build_linear_schedule(args.learning_rate, args.final_learning_rate)#线性衰减学习率调度函数
     else:
-        learning_rate = args.learning_rate
+        learning_rate = args.learning_rate#常数学习率
 
-    vec_env = make_vec_env(
+    vec_env = make_vec_env(#创建并行环境
         env_name=args.env,
         n_envs=args.n_envs,
         use_subproc=not args.no_subproc,
@@ -129,7 +129,7 @@ def main():
         step_penalty=args.step_penalty,
     )
     # 评估环境与训练环境分离，避免状态与统计相互污染
-    eval_env = make_vec_env(
+    eval_env = make_vec_env(#创建评估环境
         env_name=args.env,
         n_envs=1,
         use_subproc=False,
@@ -144,10 +144,10 @@ def main():
         step_penalty=args.step_penalty,
     )
     # 保证 train/eval 观测布局与统计封装一致，避免类型不一致与 Monitor 警告
-    vec_env = VecMonitor(VecTransposeImage(vec_env))
+    vec_env = VecMonitor(VecTransposeImage(vec_env))#训练环境先 VecTransposeImage（HWC->CHW），再通过VecMonitor记录统计信息
     eval_env = VecMonitor(VecTransposeImage(eval_env))
     if args.normalize_reward:
-        vec_env = VecNormalize(
+        vec_env = VecNormalize(#训练环境使用 VecNormalize 归一化奖励，但不归一化观测
             vec_env,
             norm_obs=False,
             norm_reward=True,
@@ -156,57 +156,59 @@ def main():
             training=True,
         )
 
-    log_dir = args.log_path
+    log_dir = args.log_path#日志目录
     if args.exp_id:
         log_dir = os.path.join(log_dir, args.exp_id)
     os.makedirs(log_dir, exist_ok=True)
 
-    save_path = args.save_path
+    save_path = args.save_path#模型保存目录
     if args.exp_id:
         save_path = os.path.join(save_path, args.exp_id)
     os.makedirs(save_path, exist_ok=True)
 
-    callback_log_dir = args.callback_log_path
+    callback_log_dir = args.callback_log_path#评估日志目录
     if args.exp_id:
         callback_log_dir = os.path.join(callback_log_dir, args.exp_id)
     os.makedirs(callback_log_dir, exist_ok=True)
 
-    eval_callback = EvalCallback(
+    eval_callback = EvalCallback(#评估回调
         eval_env,
-        best_model_save_path=save_path,
+        best_model_save_path=save_path,#最优模型保存路径
         log_path=callback_log_dir,
         # SB3 的 eval_freq 按 callback 调用次数计；这里折算为“环境总步数”更直观。
         eval_freq=max(args.eval_freq // args.n_envs, 1),
         n_eval_episodes=args.n_eval_episodes,
     )
-    metrics_callback = MetricsEvalCallback(verbose=1)
-    callback = CallbackList([eval_callback, metrics_callback])
+    metrics_callback = MetricsEvalCallback(verbose=1)#评估回调
+    callback = CallbackList([eval_callback, metrics_callback])#回调列表
 
     policy_kwargs = dict(
-        features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=512),
+        features_extractor_class=CustomCNN,#特征提取器类
+        features_extractor_kwargs=dict(features_dim=512),#特征提取器参数
     )
 
-    if args.resume:
+    if args.resume:#恢复训练
         if not os.path.isfile(args.resume):
             raise FileNotFoundError(f"--resume 指定的模型不存在: {args.resume}")
-        model = PPO.load(args.resume, env=vec_env)
+        model = PPO.load(args.resume, env=vec_env)#加载模型
         # 恢复训练时，显式覆盖可调超参数，避免沿用 checkpoint 内旧配置
         if getattr(model, "n_envs", args.n_envs) != args.n_envs:
             raise ValueError(
                 f"--resume 模型的 n_envs={model.n_envs} 与当前 --n-envs={args.n_envs} 不一致。"
                 "请使用相同 n_envs 继续训练，或不使用 --resume 重新训练。"
             )
-        model.n_steps = args.n_steps
-        model.batch_size = args.batch_size
-        model.n_epochs = args.n_epochs
-        model.ent_coef = args.ent_coef
-        model.gamma = args.gamma
-        model.learning_rate = learning_rate
-        model.lr_schedule = get_schedule_fn(learning_rate)
+        model.n_steps = args.n_steps#覆盖可调超参数
+        model.batch_size = args.batch_size#覆盖可调超参数
+        model.n_epochs = args.n_epochs#覆盖可调超参数
+        model.ent_coef = args.ent_coef#覆盖可调超参数
+        model.gamma = args.gamma#覆盖可调超参数
+        model.learning_rate = learning_rate#覆盖可调超参数
+        model.lr_schedule = get_schedule_fn(learning_rate)#覆盖可调超参数
         # 重新构建 rollout buffer，确保 n_steps / n_envs / gamma 覆盖后形状与配置一致
         # 兼容不同 SB3 版本：新版本可能没有 rollout_buffer_class 字段
         rollout_buffer_cls = getattr(model, "rollout_buffer_class", type(model.rollout_buffer))
+        #新版 SB3 可能有 model.rollout_buffer_class，没有就退化为当前 model.rollout_buffer 的类型
+        #这是版本兼容写法。
         model.rollout_buffer = rollout_buffer_cls(
             model.n_steps,
             model.observation_space,
@@ -215,7 +217,7 @@ def main():
             gamma=model.gamma,
             gae_lambda=model.gae_lambda,
             n_envs=args.n_envs,
-        )
+        )#这里就是把“装数据的容器”也按新值重建，不然可能还是旧壳子，续训会埋雷。
         model.tensorboard_log = log_dir
         print(f"已从 checkpoint 恢复并继续训练: {args.resume}")
     else:
@@ -233,21 +235,21 @@ def main():
             tensorboard_log=log_dir,
         )
 
-        if args.pretrain_path and os.path.isfile(args.pretrain_path):
+        if args.pretrain_path and os.path.isfile(args.pretrain_path):#加载预训练权重
             pretrain = torch.load(args.pretrain_path, map_location="cpu")
             model.policy.features_extractor.load_state_dict(pretrain, strict=False)
             print(f"已加载预训练 backbone: {args.pretrain_path}")
 
-    model.learn(total_timesteps=args.total_timesteps, callback=callback)
-    final_model_path = os.path.join(save_path, f"ppo_{args.env}_final")
-    model.save(final_model_path)
+    model.learn(total_timesteps=args.total_timesteps, callback=callback)#训练模型
+    final_model_path = os.path.join(save_path, f"ppo_{args.env}_final")#最终模型保存路径
+    model.save(final_model_path)#保存最终模型
     print(f"最终模型已保存: {final_model_path}.zip")
     if args.normalize_reward:
-        vecnorm_path = os.path.join(save_path, "vecnormalize.pkl")
-        vec_env.save(vecnorm_path)
+        vecnorm_path = os.path.join(save_path, "vecnormalize.pkl")#VecNormalize 统计保存路径
+        vec_env.save(vecnorm_path)#保存 VecNormalize 统计
         print(f"VecNormalize 统计已保存: {vecnorm_path}")
-    vec_env.close()
-    eval_env.close()
+    vec_env.close()#关闭并行环境
+    eval_env.close()#关闭评估环境
 
 
 if __name__ == "__main__":

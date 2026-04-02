@@ -1,9 +1,8 @@
 """
 测试混合训练（train_unified.py）保存的 PPO 模型。
 
-与训练一致：VecMonitor + VecTransposeImage +（可选）VecNormalize，
-双动作头模型需加 --dual-head（与 train_unified --dual-head 一致）；仅 Mario / 仅 CoinRun 时
-在双头模式下会注入 game_id 像素（与 mixed_env 一致）。默认按单头 CnnPolicy 加载。
+与训练一致：VecMonitor + VecTransposeImage +（可选）VecNormalize。
+默认按单头 CnnPolicy 加载。
 """
 from __future__ import annotations
 
@@ -21,7 +20,6 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage, VecNormalize
 
 from envs import make_vec_env
-from policies import UnifiedDualHeadPolicy
 
 
 def resolve_path(path: str) -> str:
@@ -31,17 +29,6 @@ def resolve_path(path: str) -> str:
     if os.path.exists(root_path):
         return root_path
     return path
-
-
-def _inject_game_id_chw(obs: np.ndarray, coinrun: bool) -> None:
-    """
-    在 CHW 观测上写入 game_id，与 mixed_env._inject_game_id_channel 语义一致。
-    浮点且值域在 [0,1] 附近时用 0 / 1；否则用 0 / 255。
-    """
-    if obs.dtype.kind == "f" and float(np.max(obs)) <= 1.0 + 1e-5:
-        obs[:, 0, 0, 0] = 1.0 if coinrun else 0.0
-    else:
-        obs[:, 0, 0, 0] = 255 if coinrun else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -66,12 +53,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="both",
         choices=["both", "mario", "coinrun"],
         help="评测环境：both=混合（与训练一致，自动注入 game_id）；mario/coinrun=单任务",
-    )
-    p.add_argument(
-        "--dual-head",
-        action="store_true",
-        help="与 train_unified --dual-head 一致：用 UnifiedDualHeadPolicy 加载；"
-        "默认关闭（单头 CnnPolicy），与训练脚本默认一致",
     )
     p.add_argument("--n-envs", type=int, default=2, help="both 模式下的并行数（与训练一致可调大）")
     p.add_argument("--mario-ratio", type=float, default=0.5, help="both：Mario 子环境占比")
@@ -158,20 +139,7 @@ def main() -> None:
         vec_env.training = False
         vec_env.norm_reward = False
 
-    load_kw = {}
-    if args.dual_head:
-        load_kw["custom_objects"] = {"policy_class": UnifiedDualHeadPolicy}
-
-    try:
-        model = PPO.load(args.model, env=vec_env, **load_kw)
-    except RuntimeError as e:
-        err = str(e)
-        if args.dual_head and "mario_action_net" in err:
-            raise RuntimeError(
-                "按双头策略加载失败：该 checkpoint 很可能是单头 CnnPolicy（训练时未加 --dual-head）。"
-                "请去掉 --dual-head 后重试。"
-            ) from e
-        raise
+    model = PPO.load(args.model, env=vec_env)
 
     screen = None
     clock = None
@@ -186,11 +154,6 @@ def main() -> None:
     if isinstance(obs, tuple):
         obs = obs[0]
 
-    if args.env == "mario" and args.dual_head:
-        _inject_game_id_chw(obs, coinrun=False)
-    if args.env == "coinrun" and args.dual_head:
-        _inject_game_id_chw(obs, coinrun=True)
-
     running = True
     for _ in range(args.steps):
         if not running:
@@ -200,11 +163,6 @@ def main() -> None:
         obs, _rewards, dones, infos = vec_env.step(action)
         if isinstance(obs, tuple):
             obs = obs[0]
-
-        if args.env == "mario" and args.dual_head:
-            _inject_game_id_chw(obs, coinrun=False)
-        if args.env == "coinrun" and args.dual_head:
-            _inject_game_id_chw(obs, coinrun=True)
 
         if args.render and screen is not None and args.env == "coinrun":
             rgb = infos[0].get("rgb") if infos and isinstance(infos[0], dict) else None
@@ -258,10 +216,6 @@ def main() -> None:
             obs = vec_env.reset()
             if isinstance(obs, tuple):
                 obs = obs[0]
-            if args.env == "mario" and args.dual_head:
-                _inject_game_id_chw(obs, coinrun=False)
-            if args.env == "coinrun" and args.dual_head:
-                _inject_game_id_chw(obs, coinrun=True)
 
     vec_env.close()
     if screen is not None:

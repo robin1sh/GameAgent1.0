@@ -57,8 +57,10 @@ def should_fuse_key(param_key: str, fuse_scope: str) -> bool:
     - actor_feature: 仅融合特征提取器 + actor 头，减少 value 头干扰
     """
     if fuse_scope == "full":
+        # full: policy 内所有浮点参数都参与融合（含 actor/critic）
         return True
     if fuse_scope == "actor_feature":
+        # actor_feature: 只融合共享视觉特征 + actor 分支，避免 value 头干扰
         return (
             param_key.startswith("features_extractor.")
             or param_key.startswith("mlp_extractor.policy_net.")
@@ -74,6 +76,7 @@ def fuse_policy_state_dict(
     fuse_scope: str,
 ) -> Dict[str, torch.Tensor]:
     """对 policy 参数做线性融合。"""
+    # 先保证两个 state_dict 的参数键完全一致，否则无法一一对应融合
     if set(state_dict_a.keys()) != set(state_dict_b.keys()):
         missing_a = sorted(set(state_dict_b.keys()) - set(state_dict_a.keys()))
         missing_b = sorted(set(state_dict_a.keys()) - set(state_dict_b.keys()))
@@ -84,16 +87,20 @@ def fuse_policy_state_dict(
         )
 
     fused = {}
+    # 逐个参数名进行融合
     for key in state_dict_a.keys():
         tensor_a = state_dict_a[key]
         tensor_b = state_dict_b[key]
+        # 同名参数的形状必须一致，避免发生错误广播
         if tensor_a.shape != tensor_b.shape:
             raise ValueError(f"参数形状不一致: {key}, {tensor_a.shape} vs {tensor_b.shape}")
 
         # 非浮点参数（如整型 buffer）不做加权，直接继承 A。
         if not torch.is_floating_point(tensor_a) or not should_fuse_key(key, fuse_scope):
+            # 非浮点参数或不在融合范围内的参数，直接继承 A
             fused[key] = tensor_a.clone()
             continue
+        # 核心融合公式：W_fused = alpha * W_a + (1 - alpha) * W_b
         fused[key] = alpha * tensor_a + (1.0 - alpha) * tensor_b
     return fused
 
@@ -213,12 +220,14 @@ def main():
     if not os.path.isfile(model_b_path):
         raise FileNotFoundError(f"找不到模型 B: {model_b_path}")
 
+    # 解析 alpha 网格（例如 0.5,0.6,0.7）
     alphas = parse_alpha_grid(args.alpha_grid)
     os.makedirs(resolve_path(args.output_dir), exist_ok=True)
 
     model_a = PPO.load(model_a_path, device=args.device)
     model_b = PPO.load(model_b_path, device=args.device)
 
+    # 只融合 policy 参数（特征提取器/actor/critic 都在此字典中）
     sd_a = model_a.policy.state_dict()
     sd_b = model_b.policy.state_dict()
 
@@ -228,6 +237,7 @@ def main():
     # raw_results 元素为 (alpha, mario_mean, coinrun_mean)
 
     print("开始融合评估...")
+    # 网格搜索不同 alpha，评估后自动选最优
     for alpha in alphas:
         fused_sd = fuse_policy_state_dict(
             state_dict_a=sd_a,
@@ -237,6 +247,7 @@ def main():
         )
 
         # 用 model_a 作为容器加载融合参数，不改动原始文件。
+        # 这一步只修改内存中的参数，不会覆盖 model_a_path 的原模型文件
         model_a.policy.load_state_dict(fused_sd, strict=True)
 
         mario_mean = evaluate_model(
@@ -261,6 +272,7 @@ def main():
             coinrun_fail_penalty=args.coinrun_fail_penalty,
             coinrun_step_penalty=args.coinrun_step_penalty,
         )
+        # 记录该 alpha 在双环境下的原始均值回报
         raw_results.append((alpha, mario_mean, coinrun_mean))
 
     mario_vals = [x[1] for x in raw_results]
@@ -269,6 +281,7 @@ def main():
     coinrun_min, coinrun_max = min(coinrun_vals), max(coinrun_vals)
     eps = 1e-8
 
+    # 计算综合分：可选 min-max 归一化后按任务权重加权
     for alpha, mario_mean, coinrun_mean in raw_results:
         if args.score_norm == "minmax":
             # 将两任务回报归一到 [0,1]，避免数值量级大的任务主导综合分。
@@ -278,6 +291,7 @@ def main():
             mario_for_score = mario_mean
             coinrun_for_score = coinrun_mean
 
+        # 综合评分（论文中可表述为双任务加权目标）
         score = args.mario_weight * mario_for_score + args.coinrun_weight * coinrun_for_score
 
         print(
@@ -288,6 +302,7 @@ def main():
         if score > best[1]:
             best = (alpha, score, mario_mean, coinrun_mean)
 
+    # 用最优 alpha 重新融合一次，并保存为最终 fused 初始化模型
     best_alpha = best[0]
     best_sd = fuse_policy_state_dict(
         state_dict_a=sd_a,

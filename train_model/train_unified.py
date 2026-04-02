@@ -17,7 +17,6 @@ from stable_baselines3.common.vec_env import VecMonitor, VecTransposeImage, VecN
 from envs import make_vec_env
 from CNN_TEMPLATE import CustomCNN
 from callbacks import MetricsEvalCallback, PrefixedEvalCallback
-from policies import UnifiedDualHeadPolicy
 
 
 def parse_args():
@@ -56,12 +55,6 @@ def parse_args():
         type=float,
         default=0.1,
         help="PPO 熵系数，适度降低可减弱后期过度探索",
-    )
-    parser.add_argument(
-        "--dual-head",
-        action="store_true",
-        default=False,
-        help="启用共享 CNN + 双动作头（Mario/CoinRun）策略",
     )
     parser.add_argument(
         "--fixed-level",
@@ -208,6 +201,14 @@ def main():
         )
 
     # 训练与评估环境保持相同包装，避免图像布局与统计方式不一致。
+    """
+        VecTransposeImage：把图像维度转成 PyTorch/CNN 需要的通道顺序（HWC -> CHW）。
+         VecMonitor：记录 episode reward/length 等统计信息，供日志和回调使用。
+        VecNormalize(... norm_reward=True ...)：只归一化奖励，不归一化观测。
+        clip_reward=10.0：防止极端奖励导致梯度不稳定。
+        gamma=0.95：这里的回报折扣因子，与 PPO 里也设置一致（下文有）。
+        training=True：使用并更新归一化统计量（训练时应开启）。
+    """
     vec_env = VecMonitor(VecTransposeImage(vec_env))
     eval_env = VecMonitor(VecTransposeImage(eval_env))
     if args.mode == "mixed":
@@ -263,7 +264,7 @@ def main():
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=512),
     )
-    policy_class = UnifiedDualHeadPolicy if args.dual_head else "CnnPolicy"
+    policy_class = "CnnPolicy"
 
     if args.resume:
         if not os.path.isfile(args.resume):
